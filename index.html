@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
-<title>Scanner de Planos - Referencia + detalle</title>
+<title>Scanner de Planos - Barrido por filas</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
   :root{
@@ -29,23 +29,20 @@
   button:disabled{opacity:.4;cursor:not-allowed}
   input[type=number], select{background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:8px;border-radius:8px;font-size:14px;width:80px}
   label{font-size:13px;color:var(--muted)}
-  video{width:100%;border-radius:10px;background:#000;max-height:50vh;display:block}
   .muted{color:var(--muted);font-size:12px}
   .hint{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.5}
   #videoScrub{width:100%}
-  .modeLabel{display:inline-block;background:var(--panel2);border:1px solid var(--accent);color:var(--accent);border-radius:20px;padding:4px 12px;font-size:12px;margin-bottom:8px}
 
   #refThumb{max-width:100%;border-radius:8px;border:1px solid var(--line);display:none;margin-top:10px}
 
-  #fpMap{display:grid;gap:4px;margin-top:10px;touch-action:manipulation;}
-  .fpCell{position:relative;border-radius:6px;border:2px solid var(--line);background-size:cover;background-position:center;background-color:#20242c;cursor:pointer;min-height:40px;overflow:hidden;}
-  .fpCell.filled{border-color:var(--accent2);}
-  .fpCell.target{border-color:var(--accent);box-shadow:0 0 0 3px rgba(79,140,255,.35);}
-  .fpCell .mark{position:absolute;bottom:2px;right:3px;font-size:11px;background:rgba(0,0,0,.6);border-radius:4px;padding:0 3px;}
-  #cellActions{display:none;margin-top:10px}
-  #cellActions.open{display:flex}
+  #rowList{display:flex;flex-direction:column;gap:6px;margin-top:10px}
+  .rowItem{display:flex;align-items:center;gap:10px;border:2px solid var(--line);border-radius:8px;padding:6px;cursor:pointer;background:var(--panel2)}
+  .rowItem.filled{border-color:var(--accent2)}
+  .rowItem .thumb{width:90px;height:44px;background-size:cover;background-position:center;background-color:#20242c;border-radius:4px;flex:none}
+  .rowItem .lbl{font-size:13px}
+  .rowItem .sub{font-size:11px;color:var(--muted)}
 
-  #cropModal{position:fixed;inset:0;background:rgba(0,0,0,.85);display:none;align-items:center;justify-content:center;z-index:50;flex-direction:column;padding:10px}
+  #cropModal{position:fixed;inset:0;background:rgba(0,0,0,.85);display:none;align-items:center;justify-content:center;z-index:150;flex-direction:column;padding:10px}
   #cropModal.open{display:flex}
   #cropCanvas{max-width:95vw;max-height:70vh;touch-action:none;border:1px solid var(--line);border-radius:8px}
 
@@ -59,13 +56,25 @@
   progress{width:100%;accent-color:var(--accent)}
   #step2, #step3{opacity:.5;pointer-events:none}
   #step2.active, #step3.active{opacity:1;pointer-events:auto}
+
+  /* ---- cámara a pantalla completa ---- */
+  #fsCam{position:fixed;inset:0;background:#000;z-index:200;display:none;flex-direction:column;}
+  #fsCam.open{display:flex}
+  #fsCam video{width:100%;height:100%;object-fit:cover;flex:1;background:#000}
+  #fsTop{position:absolute;top:0;left:0;right:0;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;background:linear-gradient(rgba(0,0,0,.7),transparent)}
+  #fsTop .modeLabel{background:rgba(0,0,0,.55);border:1px solid var(--accent);color:var(--accent);border-radius:20px;padding:5px 12px;font-size:12px}
+  #fsStripWrap{position:absolute;top:56px;left:12px;right:12px;max-height:20vh;overflow:auto;border:2px solid var(--accent);border-radius:8px;background:#111;display:none}
+  #fsStripWrap img{width:100%;display:block}
+  #fsBottom{position:absolute;bottom:0;left:0;right:0;padding:14px 12px 20px;display:flex;justify-content:center;gap:10px;flex-wrap:wrap;background:linear-gradient(transparent,rgba(0,0,0,.75))}
+  #fsBottom button{font-size:15px;padding:12px 16px}
+  #fsMsg{position:absolute;bottom:80px;left:12px;right:12px;text-align:center;font-size:13px;color:var(--warn);background:rgba(0,0,0,.6);padding:6px;border-radius:8px;display:none}
 </style>
 </head>
 <body>
 
 <header>
-  <h1>📐 Scanner de Planos — Referencia + detalle</h1>
-  <p>Una foto general define el mapa maestro. Cada foto de detalle solo se busca dentro de su propia región de ese mapa.</p>
+  <h1>📐 Scanner de Planos — Barrido por filas</h1>
+  <p>Una foto de referencia + una tira continua por cada fila. Cámara a pantalla completa.</p>
 </header>
 
 <main>
@@ -98,9 +107,10 @@
 
   <section id="step1">
     <h2><span class="step">1</span> Foto de referencia (el plano completo)</h2>
-    <p class="hint">Aléjate lo que puedas y toma <b>una sola foto</b> que cubra todo el plano, aunque salga con algo de perspectiva o el papel doblado. No necesita estar nítida en los detalles — solo necesita mostrar el conjunto completo.</p>
+    <p class="hint">Aléjate lo que puedas y toma <b>una sola foto</b> que cubra todo el plano, aunque salga con perspectiva o el papel doblado.</p>
+    <p class="hint"><b>Para máxima calidad usa "Subir foto"</b> (cámara nativa, resolución completa) en vez de "Cámara en vivo" (limitada a calidad de video).</p>
     <div class="row">
-      <button class="primary" id="btnRefCam">📷 Tomar foto de referencia</button>
+      <button class="primary" id="btnRefCam">📷 Cámara en vivo</button>
       <input type="file" id="refFile" accept="image/*" capture="environment">
     </div>
     <img id="refThumb">
@@ -110,37 +120,14 @@
   </section>
 
   <section id="step2">
-    <h2><span class="step">2</span> Cuadrícula de detalle</h2>
+    <h2><span class="step">2</span> Filas de detalle (barrido continuo)</h2>
     <div class="row">
-      <label>Filas<br><input type="number" id="gridRows" value="2" min="1" max="6"></label>
-      <label>Columnas<br><input type="number" id="gridCols" value="3" min="1" max="6"></label>
+      <label>Número de filas<br><input type="number" id="numRows" value="2" min="1" max="6"></label>
       <label>Margen de búsqueda %<br><input type="number" id="margin" value="25" min="10" max="60"></label>
-      <button class="primary" id="btnApplyGrid">Aplicar cuadrícula</button>
+      <button class="primary" id="btnApplyRows">Aplicar</button>
     </div>
-    <p class="hint">Divide el plano en secciones para fotografiarlas con más detalle. El margen define cuánto alrededor de cada sección se buscará su coincidencia en la foto de referencia (compensa que el encuadre no sea perfecto).</p>
-    <div id="fpMap"></div>
-    <div id="cellActions" class="row">
-      <span class="muted" id="cellActionsLabel"></span>
-      <button class="small" id="btnRetake">🔄 Re-tomar</button>
-    </div>
-  </section>
-
-  <section id="captureShared" style="display:none">
-    <h2>📸 Capturando</h2>
-    <span class="modeLabel" id="modeLabel">-</span>
-    <div class="row">
-      <button class="primary" id="btnStartCam">Activar cámara</button>
-      <button id="btnSwitchCam" disabled>Cambiar cámara</button>
-      <button id="btnCapture" class="good" disabled>Capturar</button>
-      <button id="btnStopCam" disabled>Apagar cámara</button>
-    </div>
-    <video id="video" autoplay playsinline muted></video>
-    <div class="row" style="margin-top:12px">
-      <input type="file" id="videoFile" accept="video/*">
-    </div>
-    <video id="videoPlayer" controls style="margin-top:10px;display:none"></video>
-    <div class="row" style="margin-top:8px"><input type="range" id="videoScrub" min="0" max="1" step="0.01" value="0" style="display:none"></div>
-    <button id="btnGrabFrame" style="margin-top:8px" disabled>🖼️ Usar fotograma actual</button>
+    <p class="hint">Toca una fila para grabarla: activas la cámara a pantalla completa y vas tocando "Capturar tramo" mientras te desplazas lentamente de un lado a otro de esa fila, dejando buen solape entre tramos.</p>
+    <div id="rowList"></div>
   </section>
 
   <section id="step3">
@@ -150,11 +137,11 @@
     <progress id="progressBar" value="0" max="1" style="display:none"></progress>
     <canvas id="assembledCanvas"></canvas>
     <div class="box">
-      <b>Por qué esto es más confiable que unir fotos entre sí:</b>
+      <b>Cómo se combina todo:</b>
       <ul class="tips">
-        <li>Cada foto de detalle se ancla directamente contra la referencia — no contra la foto anterior — así que los errores no se van acumulando de sección en sección.</li>
-        <li>Solo se busca la coincidencia dentro de la región esperada (más el margen), no en todo el plano, lo que evita confundirse con líneas o textos repetidos de otras zonas.</li>
-        <li>Si una sección de detalle no encaja con confianza suficiente, esa zona se queda con la foto de referencia (que ya cubre todo) en vez de deformarse o quedar en blanco.</li>
+        <li>Cada tramo de un barrido se une con el tramo anterior porque el movimiento entre uno y otro es pequeño — el caso más seguro para este tipo de unión automática.</li>
+        <li>La tira completa de cada fila se ancla luego contra su franja correspondiente de la foto de referencia (no contra las otras filas), así que los errores no se acumulan de fila en fila.</li>
+        <li>Si una fila no encaja con confianza, esa franja se queda con la foto de referencia en vez de deformarse.</li>
       </ul>
     </div>
   </section>
@@ -166,6 +153,23 @@
   </section>
 
 </main>
+
+<!-- Cámara a pantalla completa (referencia y barrido de filas) -->
+<div id="fsCam">
+  <video id="video" autoplay playsinline muted></video>
+  <div id="fsTop">
+    <span class="modeLabel" id="modeLabel">-</span>
+    <button class="small danger" id="btnFsClose">✖ Cerrar</button>
+  </div>
+  <div id="fsStripWrap"><img id="fsStripImg"></div>
+  <div id="fsMsg"></div>
+  <div id="fsBottom">
+    <button id="btnSwitchCam">🔄 Cambiar cámara</button>
+    <button class="good" id="btnFsShoot">📸 Capturar</button>
+    <button id="btnUndoTramo" style="display:none">↩️ Deshacer último</button>
+    <button class="good" id="btnRowDone" style="display:none">✅ Fila lista</button>
+  </div>
+</div>
 
 <div id="cropModal">
   <canvas id="cropCanvas"></canvas>
@@ -179,9 +183,9 @@
 <script>
 const $ = (id) => document.getElementById(id);
 const SIZES_MM = { A0:[841,1189], A1:[594,841], A2:[420,594], A3:[297,420], A4:[210,297] };
-const WORK_MAXDIM = 1700;
+const WORK_MAXDIM = 1500;      // resolución de trabajo para el barrido/matching (rápido)
+const EXPORT_MAXDIM = 3600;    // resolución del resultado final (aprovecha la foto real)
 
-// ---------- formato ----------
 function getPageMM(){
   const key = $('pageSize').value;
   let w,h;
@@ -202,6 +206,10 @@ function toWorkingCanvas(img, maxDim){
   c.getContext('2d').drawImage(img,0,0,c.width,c.height);
   return c;
 }
+function cloneCanvas(src){
+  const c = document.createElement('canvas'); c.width=src.width; c.height=src.height;
+  c.getContext('2d').drawImage(src,0,0); return c;
+}
 function cropCanvasRegion(canvas, x, y, w, h){
   const c = document.createElement('canvas');
   c.width=Math.max(1,Math.round(w)); c.height=Math.max(1,Math.round(h));
@@ -211,174 +219,395 @@ function cropCanvasRegion(canvas, x, y, w, h){
 function setStatus(text, kind){ const el=$('status'); el.textContent=text; el.className=kind||''; }
 
 // =========================================================
-// Cámara / video compartidos (modo: 'reference' o 'detail')
+// Homografía general 3x3 + validación de plausibilidad
 // =========================================================
-let camMode = null; // 'reference' | 'detail'
-const video = $('video');
-let stream=null, currentFacing='environment';
-
-function showCaptureFor(mode, label){
-  camMode = mode;
-  $('modeLabel').textContent = label;
-  $('captureShared').style.display='block';
-  $('captureShared').scrollIntoView({behavior:'smooth', block:'start'});
+function multiplyH(A,B){
+  const r=new Array(9).fill(0);
+  for(let i=0;i<3;i++)for(let j=0;j<3;j++){ let s=0; for(let k=0;k<3;k++) s+=A[i*3+k]*B[k*3+j]; r[i*3+j]=s; }
+  return r;
+}
+function invertH(H){
+  const [a,b,c,d,e,f,g,h,i]=H;
+  const A=e*i-f*h, B=-(d*i-f*g), C=d*h-e*g;
+  const D=-(b*i-c*h), E=a*i-c*g, F=-(a*h-b*g);
+  const G=b*f-c*e, Hh=-(a*f-c*d), I=a*e-b*d;
+  const det = a*A+b*B+c*C;
+  return [A/det,D/det,G/det, B/det,E/det,Hh/det, C/det,F/det,I/det];
+}
+function applyH(H,x,y){
+  const denom = H[6]*x+H[7]*y+H[8];
+  return [ (H[0]*x+H[1]*y+H[2])/denom, (H[3]*x+H[4]*y+H[5])/denom ];
+}
+function isHomographyPlausible(H, w, h, opts){
+  opts = opts || {};
+  if(H.some(v => !isFinite(v))) return false;
+  if(Math.abs(H[6])*w > 0.85 || Math.abs(H[7])*h > 0.85) return false;
+  const det2x2 = H[0]*H[4]-H[1]*H[3];
+  const scale = Math.sqrt(Math.abs(det2x2))/Math.abs(H[8]||1);
+  const minS = opts.minScale||0.3, maxS = opts.maxScale||3.2;
+  if(scale < minS || scale > maxS) return false;
+  const corners = [[0,0],[w,0],[w,h],[0,h]].map(([x,y])=>applyH(H,x,y));
+  let area=0;
+  for(let i=0;i<4;i++){ const [x1,y1]=corners[i], [x2,y2]=corners[(i+1)%4]; area += x1*y2 - x2*y1; }
+  area = Math.abs(area)/2;
+  const origArea = w*h;
+  if(area < origArea*minS*minS || area > origArea*maxS*maxS) return false;
+  for(let i=0;i<4;i++){
+    const [ax,ay]=corners[i], [bx,by]=corners[(i+1)%4], [cx,cy]=corners[(i+2)%4];
+    const cross = (bx-ax)*(cy-ay)-(by-ay)*(cx-ax);
+    if(i===0) var sign = Math.sign(cross);
+    else if(Math.sign(cross)!==sign && Math.sign(cross)!==0) return false;
+  }
+  return true;
 }
 
-$('btnStartCam').onclick = async () => {
-  try{
-    if(stream) stream.getTracks().forEach(t=>t.stop());
-    stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:currentFacing, width:{ideal:1920}, height:{ideal:1080}}, audio:false});
-    video.srcObject = stream; video.style.display='block';
-    $('btnCapture').disabled=false; $('btnStopCam').disabled=false; $('btnSwitchCam').disabled=false;
-  }catch(e){
-    alert('No se pudo acceder a la cámara: '+e.message+'\nDebe abrirse por HTTPS (ej. GitHub Pages).');
+// =========================================================
+// OpenCV.js
+// =========================================================
+let cvReadyPromise=null;
+function ensureOpenCV(){
+  if(cvReadyPromise) return cvReadyPromise;
+  cvReadyPromise = new Promise((resolve,reject)=>{
+    if(window.cv && window.cv.Mat){ resolve(); return; }
+    const s = document.createElement('script');
+    s.src='https://docs.opencv.org/4.x/opencv.js'; s.async=true;
+    s.onload = () => { cv['onRuntimeInitialized']=()=>resolve(); };
+    s.onerror = () => reject(new Error('No se pudo descargar OpenCV.js (revisa tu conexión).'));
+    document.head.appendChild(s);
+  });
+  return cvReadyPromise;
+}
+function detectFeatures(canvas, nfeatures){
+  const src = cv.imread(canvas);
+  const gray = new cv.Mat();
+  cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+  const orb = new cv.ORB(nfeatures||1000);
+  const keypoints = new cv.KeyPointVector();
+  const descriptors = new cv.Mat();
+  const mask = new cv.Mat();
+  orb.detectAndCompute(gray, mask, keypoints, descriptors);
+  src.delete(); gray.delete(); mask.delete(); orb.delete();
+  return {keypoints, descriptors};
+}
+function deleteFeat(f){ f.keypoints.delete(); f.descriptors.delete(); }
+
+function estimateHomography(queryFeat, trainFeat, queryW, queryH, opts){
+  opts = opts || {};
+  const minGood = opts.minGood||15, minInliers = opts.minInliers||15, minRatio = opts.minRatio||0.5;
+  if(queryFeat.descriptors.rows < 8 || trainFeat.descriptors.rows < 8) return null;
+  const bf = new cv.BFMatcher(cv.NORM_HAMMING, false);
+  const knn = new cv.DMatchVectorVector();
+  bf.knnMatch(queryFeat.descriptors, trainFeat.descriptors, knn, 2);
+  const good = [];
+  for(let i=0;i<knn.size();i++){
+    const m = knn.get(i);
+    if(m.size()<2) continue;
+    const m0=m.get(0), m1=m.get(1);
+    if(m0.distance < 0.75*m1.distance) good.push(m0);
   }
-};
-$('btnSwitchCam').onclick = async () => { currentFacing = currentFacing==='environment'?'user':'environment'; $('btnStartCam').onclick(); };
-$('btnStopCam').onclick = () => {
+  knn.delete(); bf.delete();
+  if(good.length < minGood) return null;
+
+  const srcArr=[], dstArr=[];
+  good.forEach(m=>{
+    const p1 = queryFeat.keypoints.get(m.queryIdx).pt;
+    const p2 = trainFeat.keypoints.get(m.trainIdx).pt;
+    srcArr.push(p1.x, p1.y); dstArr.push(p2.x, p2.y);
+  });
+  const srcMat = cv.matFromArray(good.length,1,cv.CV_32FC2, srcArr);
+  const dstMat = cv.matFromArray(good.length,1,cv.CV_32FC2, dstArr);
+  const maskMat = new cv.Mat();
+  const Hmat = cv.findHomography(srcMat, dstMat, cv.RANSAC, 4, maskMat);
+  let inliers=0;
+  for(let i=0;i<maskMat.rows;i++) if(maskMat.data[i]) inliers++;
+  srcMat.delete(); dstMat.delete(); maskMat.delete();
+  const inlierRatio = inliers/good.length;
+  if(Hmat.empty() || inliers < minInliers || inlierRatio < minRatio){ Hmat.delete(); return null; }
+  const H = Array.from(Hmat.data64F);
+  Hmat.delete();
+  if(!isHomographyPlausible(H, queryW, queryH, opts.plausible)) return null;
+  return H;
+}
+
+// pega srcCanvas en destCanvas usando H (src -> dest), solo dentro del área proyectada
+function warpAndPaste(destCtx, destCanvas, srcCanvas, H){
+  const corners=[[0,0],[srcCanvas.width,0],[srcCanvas.width,srcCanvas.height],[0,srcCanvas.height]];
+  const mapped = corners.map(([x,y])=>applyH(H,x,y));
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  mapped.forEach(([x,y])=>{minX=Math.min(minX,x);minY=Math.min(minY,y);maxX=Math.max(maxX,x);maxY=Math.max(maxY,y);});
+  minX=Math.max(0,Math.floor(minX)); minY=Math.max(0,Math.floor(minY));
+  maxX=Math.min(destCanvas.width,Math.ceil(maxX)); maxY=Math.min(destCanvas.height,Math.ceil(maxY));
+  if(maxX<=minX||maxY<=minY) return;
+  const Hinv = invertH(H);
+  const destData = destCtx.getImageData(0,0,destCanvas.width,destCanvas.height);
+  const dd = destData.data; const dW=destCanvas.width;
+  const srcData = srcCanvas.getContext('2d').getImageData(0,0,srcCanvas.width,srcCanvas.height).data;
+  const sw=srcCanvas.width, sh=srcCanvas.height;
+  for(let Y=minY;Y<maxY;Y++){
+    for(let X=minX;X<maxX;X++){
+      const [sx,sy]=applyH(Hinv,X,Y);
+      if(sx>=0&&sy>=0&&sx<sw-1&&sy<sh-1){
+        const x0=Math.floor(sx), y0=Math.floor(sy), fx=sx-x0, fy=sy-y0;
+        const di=(Y*dW+X)*4;
+        for(let c=0;c<3;c++){
+          const p00=srcData[(y0*sw+x0)*4+c], p10=srcData[(y0*sw+x0+1)*4+c];
+          const p01=srcData[((y0+1)*sw+x0)*4+c], p11=srcData[((y0+1)*sw+x0+1)*4+c];
+          dd[di+c]=p00*(1-fx)*(1-fy)+p10*fx*(1-fy)+p01*(1-fx)*fy+p11*fx*fy;
+        }
+        dd[di+3]=255;
+      }
+    }
+  }
+  destCtx.putImageData(destData,0,0);
+}
+
+// crece un canvas-mosaico agregando un nuevo frame ya alineado (H: frame -> mosaico actual)
+function growMosaic(mosaicCanvas, frameCanvas, H){
+  const corners=[[0,0],[frameCanvas.width,0],[frameCanvas.width,frameCanvas.height],[0,frameCanvas.height]];
+  const mapped = corners.map(([x,y])=>applyH(H,x,y));
+  let minX=0,minY=0,maxX=mosaicCanvas.width,maxY=mosaicCanvas.height;
+  mapped.forEach(([x,y])=>{ minX=Math.min(minX,x); minY=Math.min(minY,y); maxX=Math.max(maxX,x); maxY=Math.max(maxY,y); });
+  const tx=Math.max(0,-minX), ty=Math.max(0,-minY);
+  const newW=Math.ceil(maxX-Math.min(0,minX)), newH=Math.ceil(maxY-Math.min(0,minY));
+  if(newW>7000||newH>7000||newW<=0||newH<=0) return null;
+  const newCanvas = document.createElement('canvas');
+  newCanvas.width=newW; newCanvas.height=newH;
+  const nctx = newCanvas.getContext('2d');
+  nctx.drawImage(mosaicCanvas, tx, ty);
+  const T=[1,0,tx, 0,1,ty, 0,0,1];
+  const Hnew = multiplyH(T,H);
+  const Hinv = invertH(Hnew);
+  const destCorners = corners.map(([x,y])=>applyH(Hnew,x,y));
+  let dminX=Infinity,dminY=Infinity,dmaxX=-Infinity,dmaxY=-Infinity;
+  destCorners.forEach(([x,y])=>{dminX=Math.min(dminX,x);dminY=Math.min(dminY,y);dmaxX=Math.max(dmaxX,x);dmaxY=Math.max(dmaxY,y);});
+  dminX=Math.max(0,Math.floor(dminX)); dminY=Math.max(0,Math.floor(dminY));
+  dmaxX=Math.min(newW,Math.ceil(dmaxX)); dmaxY=Math.min(newH,Math.ceil(dmaxY));
+  const destImgData = nctx.getImageData(0,0,newW,newH);
+  const dd = destImgData.data;
+  const srcData = frameCanvas.getContext('2d').getImageData(0,0,frameCanvas.width,frameCanvas.height).data;
+  const sw=frameCanvas.width, sh=frameCanvas.height;
+  for(let Y=dminY;Y<dmaxY;Y++){
+    for(let X=dminX;X<dmaxX;X++){
+      const di=(Y*newW+X)*4;
+      if(dd[di+3] !== 0) continue;
+      const [sx,sy] = applyH(Hinv,X,Y);
+      if(sx>=0&&sy>=0&&sx<sw-1&&sy<sh-1){
+        const x0=Math.floor(sx), y0=Math.floor(sy), fx=sx-x0, fy=sy-y0;
+        for(let c=0;c<4;c++){
+          const p00=srcData[(y0*sw+x0)*4+c], p10=srcData[(y0*sw+x0+1)*4+c];
+          const p01=srcData[((y0+1)*sw+x0)*4+c], p11=srcData[((y0+1)*sw+x0+1)*4+c];
+          dd[di+c]=p00*(1-fx)*(1-fy)+p10*fx*(1-fy)+p01*(1-fx)*fy+p11*fx*fy;
+        }
+      }
+    }
+  }
+  nctx.putImageData(destImgData,0,0);
+  return newCanvas;
+}
+
+// =========================================================
+// Cámara a pantalla completa
+// =========================================================
+const video = $('video');
+let stream=null, currentFacing='environment';
+let camMode=null; // 'reference' | 'rowsweep'
+
+async function startStream(){
   if(stream) stream.getTracks().forEach(t=>t.stop());
-  $('btnCapture').disabled=true; $('btnStopCam').disabled=true; $('btnSwitchCam').disabled=true;
-};
-$('btnCapture').onclick = () => {
+  stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:currentFacing, width:{ideal:1920}, height:{ideal:1080}}, audio:false});
+  video.srcObject = stream;
+}
+async function openFullscreenCam(mode, label){
+  camMode = mode;
+  $('modeLabel').textContent = label;
+  $('fsCam').classList.add('open');
+  $('fsMsg').style.display='none';
+  try{ await startStream(); }
+  catch(e){ alert('No se pudo acceder a la cámara: '+e.message+'\nDebe abrirse por HTTPS.'); closeFullscreenCam(); return; }
+  if(mode==='reference'){
+    $('btnFsShoot').style.display='inline-block';
+    $('btnUndoTramo').style.display='none'; $('btnRowDone').style.display='none';
+    $('fsStripWrap').style.display='none';
+  } else {
+    $('btnFsShoot').style.display='inline-block'; $('btnFsShoot').textContent='📸 Capturar tramo';
+    $('btnUndoTramo').style.display='inline-block'; $('btnRowDone').style.display='inline-block';
+    $('fsStripWrap').style.display = sweepCanvas ? 'block' : 'none';
+    if(sweepCanvas) $('fsStripImg').src = sweepCanvas.toDataURL('image/jpeg',0.8);
+  }
+}
+function closeFullscreenCam(){
+  if(stream) stream.getTracks().forEach(t=>t.stop());
+  $('fsCam').classList.remove('open');
+}
+$('btnFsClose').onclick = () => { closeFullscreenCam(); };
+$('btnSwitchCam').onclick = async () => { currentFacing = currentFacing==='environment'?'user':'environment'; try{ await startStream(); }catch(e){} };
+
+function grabFrameCanvas(){
   const c = document.createElement('canvas');
   c.width = video.videoWidth; c.height = video.videoHeight;
   c.getContext('2d').drawImage(video,0,0);
-  handleCapturedImage(c.toDataURL('image/jpeg',0.95));
-};
-const videoPlayer = $('videoPlayer');
-$('videoFile').onchange = (e) => {
-  const f = e.target.files[0]; if(!f) return;
-  videoPlayer.src = URL.createObjectURL(f);
-  videoPlayer.style.display='block'; $('videoScrub').style.display='block'; $('btnGrabFrame').disabled=false;
-};
-videoPlayer.onloadedmetadata = () => { $('videoScrub').max = videoPlayer.duration; };
-videoPlayer.ontimeupdate = () => { $('videoScrub').value = videoPlayer.currentTime; };
-$('videoScrub').oninput = (e) => { videoPlayer.currentTime = e.target.value; };
-$('btnGrabFrame').onclick = () => {
-  const c = document.createElement('canvas');
-  c.width = videoPlayer.videoWidth; c.height = videoPlayer.videoHeight;
-  c.getContext('2d').drawImage(videoPlayer,0,0);
-  handleCapturedImage(c.toDataURL('image/jpeg',0.95));
-};
-function handleCapturedImage(dataUrl){
-  if(camMode==='reference'){
-    openCropModal(dataUrl, (corrected)=>{
-      setReference(corrected);
-    });
-  } else if(camMode==='detail'){
-    cells[currentIdx] = {dataUrl};
-    const next = cells.findIndex(c=>!c.dataUrl);
-    currentIdx = next===-1 ? currentIdx : next;
-    renderMap(); updateTargetLabel();
-    $('cellActions').classList.remove('open');
-  }
+  return c;
 }
+function showFsMsg(text){
+  const el = $('fsMsg'); el.textContent=text; el.style.display='block';
+  clearTimeout(showFsMsg._t);
+  showFsMsg._t = setTimeout(()=>{ el.style.display='none'; }, 3200);
+}
+
+$('btnFsShoot').onclick = async () => {
+  const full = grabFrameCanvas();
+  if(camMode==='reference'){
+    closeFullscreenCam();
+    openCropModal(full.toDataURL('image/jpeg',0.95), (corrected)=> setReference(corrected));
+  } else if(camMode==='rowsweep'){
+    await addSweepFrame(full);
+  }
+};
 
 // =========================================================
 // Paso 1: foto de referencia
 // =========================================================
-let referenceCanvas = null;
-$('btnRefCam').onclick = () => showCaptureFor('reference', 'Foto de referencia (todo el plano)');
+let referenceCanvas = null;      // resolución de trabajo (matching)
+let referenceFullCanvas = null;  // resolución real (para exportar)
+$('btnRefCam').onclick = () => openFullscreenCam('reference', 'Foto de referencia (todo el plano)');
 $('refFile').onchange = (e) => {
   const f = e.target.files[0]; if(!f) return;
   const reader = new FileReader();
   reader.onload = () => openCropModal(reader.result, (corrected)=> setReference(corrected));
   reader.readAsDataURL(f);
 };
-$('btnRefRedo').onclick = () => showCaptureFor('reference', 'Foto de referencia (todo el plano)');
+$('btnRefRedo').onclick = () => openFullscreenCam('reference', 'Foto de referencia (todo el plano)');
 
 async function setReference(dataUrl){
   const img = await loadImage(dataUrl);
+  referenceFullCanvas = toWorkingCanvas(img, EXPORT_MAXDIM);
   referenceCanvas = toWorkingCanvas(img, WORK_MAXDIM);
   $('refThumb').src = referenceCanvas.toDataURL('image/jpeg',0.9);
   $('refThumb').style.display='block';
   $('refRedo').style.display='flex';
   $('step2').classList.add('active');
   $('step3').classList.add('active');
-  renderMap();
+  renderRowList();
 }
 
 // =========================================================
-// Paso 2: cuadrícula de detalle (mapa tipo huella)
+// Paso 2: filas de detalle (barrido continuo)
 // =========================================================
-let gridRows=2, gridCols=3;
-let cells = [];
-let currentIdx = 0;
-let selectedIdx = -1;
+let numRows = 2;
+let rows = []; // {stripCanvas: canvas|null, stripFullCanvas: canvas|null}
+let currentRowIdx = -1;
+let sweepCanvas = null;      // mosaico en construcción (resolución de trabajo)
+let sweepFullCanvas = null;  // mosaico en construcción (resolución real, mismos pasos aplicados)
+let sweepHistory = [];       // para deshacer
 
-function buildCells(rows, cols, preserve){
-  const n = rows*cols;
-  const old = cells;
-  cells = new Array(n).fill(null).map((_,i)=> (preserve && old[i]) ? old[i] : {dataUrl:null});
-  gridRows=rows; gridCols=cols;
-  currentIdx = cells.findIndex(c=>!c.dataUrl);
-  if(currentIdx===-1) currentIdx=0;
-  renderMap(); updateTargetLabel();
+function buildRows(n, preserve){
+  const old = rows;
+  rows = new Array(n).fill(null).map((_,i)=> (preserve && old[i]) ? old[i] : {stripCanvas:null, stripFullCanvas:null});
+  numRows = n;
+  renderRowList();
 }
-$('btnApplyGrid').onclick = () => {
-  const rows = Math.max(1, Math.min(6, parseInt($('gridRows').value)||1));
-  const cols = Math.max(1, Math.min(6, parseInt($('gridCols').value)||1));
-  const hasData = cells.some(c=>c && c.dataUrl);
-  if(hasData && (rows!==gridRows || cols!==gridCols)){
-    if(!confirm('Cambiar el tamaño de la cuadrícula borrará las secciones ya capturadas. ¿Continuar?')) return;
-  }
-  buildCells(rows, cols, !(hasData && (rows!==gridRows||cols!==gridCols)));
+$('btnApplyRows').onclick = () => {
+  const n = Math.max(1, Math.min(6, parseInt($('numRows').value)||1));
+  const hasData = rows.some(r=>r && r.stripCanvas);
+  if(hasData && n!==numRows){
+    if(!confirm('Cambiar el número de filas borrará las tiras ya grabadas. ¿Continuar?')) return;
+    buildRows(n, false);
+  } else buildRows(n, true);
 };
-buildCells(gridRows, gridCols, false);
+buildRows(numRows, false);
 
-function renderMap(){
-  const map = $('fpMap');
-  map.style.gridTemplateColumns = `repeat(${gridCols}, 1fr)`;
-  if(referenceCanvas) map.style.aspectRatio = `${referenceCanvas.width} / ${referenceCanvas.height}`;
-  map.innerHTML='';
-  cells.forEach((c, idx)=>{
+function renderRowList(){
+  const list = $('rowList');
+  list.innerHTML='';
+  rows.forEach((r, idx)=>{
     const div = document.createElement('div');
-    div.className = 'fpCell' + (c.dataUrl?' filled':'') + (idx===currentIdx?' target':'');
-    if(c.dataUrl) div.style.backgroundImage = `url(${c.dataUrl})`;
-    else if(referenceCanvas){
-      const row=Math.floor(idx/gridCols), col=idx%gridCols;
-      div.style.backgroundImage = `url(${referenceCanvas.toDataURL('image/jpeg',0.5)})`;
-      div.style.backgroundSize = `${gridCols*100}% ${gridRows*100}%`;
-      div.style.backgroundPosition = `${gridCols>1?(col*100/(gridCols-1)):0}% ${gridRows>1?(row*100/(gridRows-1)):0}%`;
-      div.style.opacity='0.55';
-    }
-    div.onclick = () => selectCell(idx);
-    map.appendChild(div);
+    div.className = 'rowItem'+(r.stripCanvas?' filled':'');
+    const thumb = document.createElement('div'); thumb.className='thumb';
+    if(r.stripCanvas) thumb.style.backgroundImage = `url(${r.stripCanvas.toDataURL('image/jpeg',0.6)})`;
+    const txt = document.createElement('div');
+    txt.innerHTML = `<div class="lbl">Fila ${idx+1} de ${numRows}</div><div class="sub">${r.stripCanvas? 'Grabada — toca para rehacer' : 'Sin grabar — toca para empezar'}</div>`;
+    div.appendChild(thumb); div.appendChild(txt);
+    div.onclick = () => startRowSweep(idx);
+    list.appendChild(div);
   });
 }
-function selectCell(idx){
+
+function startRowSweep(idx){
   if(!referenceCanvas){ alert('Primero toma la foto de referencia (paso 1).'); return; }
-  selectedIdx = idx; currentIdx = idx;
-  renderMap(); updateTargetLabel();
-  if(cells[idx].dataUrl){
-    $('cellActions').classList.add('open');
-    $('cellActionsLabel').textContent = `Sección fila ${Math.floor(idx/gridCols)+1}, columna ${idx%gridCols+1}`;
-  } else {
-    $('cellActions').classList.remove('open');
-    showCaptureFor('detail', `Sección fila ${Math.floor(idx/gridCols)+1} de ${gridRows}, columna ${idx%gridCols+1} de ${gridCols}`);
+  currentRowIdx = idx;
+  sweepCanvas = null; sweepFullCanvas = null; sweepHistory = [];
+  openFullscreenCam('rowsweep', `Fila ${idx+1} de ${numRows} — barrido`);
+}
+
+async function addSweepFrame(fullFrameCanvas){
+  const frameWork = toWorkingCanvas(fullFrameCanvas, WORK_MAXDIM);
+  const frameFull = toWorkingCanvas(fullFrameCanvas, EXPORT_MAXDIM);
+
+  if(!sweepCanvas){
+    sweepCanvas = frameWork; sweepFullCanvas = frameFull;
+    sweepHistory.push({work:null, full:null});
+    $('fsStripWrap').style.display='block';
+    $('fsStripImg').src = sweepCanvas.toDataURL('image/jpeg',0.8);
+    return;
+  }
+  $('btnFsShoot').disabled = true;
+  showFsMsg('Analizando tramo...');
+  try{
+    await ensureOpenCV();
+    // se compara solo contra el borde derecho del mosaico actual (más rápido y es donde debe solaparse el nuevo tramo)
+    const edgeW = Math.min(sweepCanvas.width, Math.round(frameWork.width*1.3));
+    const edgeCrop = cropCanvasRegion(sweepCanvas, sweepCanvas.width-edgeW, 0, edgeW, sweepCanvas.height);
+    const frameFeat = detectFeatures(frameWork, 900);
+    const edgeFeat = detectFeatures(edgeCrop, 900);
+    const H = estimateHomography(frameFeat, edgeFeat, frameWork.width, frameWork.height, {minGood:15, minInliers:15, minRatio:0.5, plausible:{minScale:0.6, maxScale:1.7}});
+    deleteFeat(frameFeat); deleteFeat(edgeFeat);
+    if(!H){
+      showFsMsg('No se pudo unir este tramo. Muévete más despacio, con más solape, e intenta de nuevo.');
+      return;
+    }
+    const T = [1,0, sweepCanvas.width-edgeW, 0,1,0, 0,0,1];
+    const Hfull = multiplyH(T, H);
+    const merged = growMosaic(sweepCanvas, frameWork, Hfull);
+    if(!merged){ showFsMsg('El tramo no encajó de forma razonable. Intenta de nuevo.'); return; }
+
+    // aplicar la misma transformacion (reescalada) al mosaico de resolucion real
+    const sSweep = sweepCanvas.width / sweepFullCanvas.width;
+    const sFrame = frameWork.width / frameFull.width;
+    const Sframe = [sFrame,0,0, 0,sFrame,0, 0,0,1];
+    const SsweepInv = [1/sSweep,0,0, 0,1/sSweep,0, 0,0,1];
+    const HfullRes = multiplyH(SsweepInv, multiplyH(Hfull, Sframe));
+    const mergedFull = growMosaic(sweepFullCanvas, frameFull, HfullRes) || sweepFullCanvas;
+
+    sweepHistory.push({work:sweepCanvas, full:sweepFullCanvas});
+    sweepCanvas = merged; sweepFullCanvas = mergedFull;
+    $('fsStripImg').src = sweepCanvas.toDataURL('image/jpeg',0.8);
+  }catch(err){
+    console.error(err);
+    showFsMsg('Error al unir el tramo: '+err.message);
+  }finally{
+    $('btnFsShoot').disabled=false;
   }
 }
-function updateTargetLabel(){
-  const r=Math.floor(currentIdx/gridCols)+1, c=(currentIdx%gridCols)+1;
-  if($('captureShared').style.display==='block' && camMode==='detail'){
-    $('modeLabel').textContent = `Sección fila ${r} de ${gridRows}, columna ${c} de ${gridCols}`;
-  }
-}
-$('btnRetake').onclick = () => {
-  cells[selectedIdx] = {dataUrl:null};
-  currentIdx=selectedIdx; renderMap();
-  $('cellActions').classList.remove('open');
-  showCaptureFor('detail', `Sección fila ${Math.floor(selectedIdx/gridCols)+1} de ${gridRows}, columna ${selectedIdx%gridCols+1} de ${gridCols}`);
+$('btnUndoTramo').onclick = () => {
+  const prev = sweepHistory.pop();
+  if(prev){ sweepCanvas=prev.work; sweepFullCanvas=prev.full; }
+  if(sweepCanvas){ $('fsStripImg').src = sweepCanvas.toDataURL('image/jpeg',0.8); $('fsStripWrap').style.display='block'; }
+  else $('fsStripWrap').style.display='none';
+};
+$('btnRowDone').onclick = () => {
+  if(!sweepCanvas){ alert('Captura al menos un tramo antes de terminar la fila.'); return; }
+  rows[currentRowIdx] = {stripCanvas:sweepCanvas, stripFullCanvas:sweepFullCanvas};
+  closeFullscreenCam();
+  renderRowList();
 };
 
 // =========================================================
-// Modal de corrección de 4 esquinas (genérico, con callback)
+// Modal de corrección de 4 esquinas (solo para la referencia)
 // =========================================================
 const cropModal = $('cropModal');
 const cropCanvas = $('cropCanvas');
 let cropCtx = cropCanvas.getContext('2d');
 let cropImg=null, cropPoints=[], draggingPt=-1, scaleFactor=1, cropCallback=null;
-
 function openCropModal(dataUrl, callback){
   cropCallback = callback;
   cropImg = new Image();
@@ -478,198 +707,67 @@ function getHomography8(src, dst){
 }
 
 // =========================================================
-// Homografía general 3x3 (para anclar cada detalle a la referencia)
-// =========================================================
-function multiplyH(A,B){
-  const r=new Array(9).fill(0);
-  for(let i=0;i<3;i++)for(let j=0;j<3;j++){ let s=0; for(let k=0;k<3;k++) s+=A[i*3+k]*B[k*3+j]; r[i*3+j]=s; }
-  return r;
-}
-function invertH(H){
-  const [a,b,c,d,e,f,g,h,i]=H;
-  const A=e*i-f*h, B=-(d*i-f*g), C=d*h-e*g;
-  const D=-(b*i-c*h), E=a*i-c*g, F=-(a*h-b*g);
-  const G=b*f-c*e, Hh=-(a*f-c*d), I=a*e-b*d;
-  const det = a*A+b*B+c*C;
-  return [A/det,D/det,G/det, B/det,E/det,Hh/det, C/det,F/det,I/det];
-}
-function applyH(H,x,y){
-  const denom = H[6]*x+H[7]*y+H[8];
-  return [ (H[0]*x+H[1]*y+H[2])/denom, (H[3]*x+H[4]*y+H[5])/denom ];
-}
-function isHomographyPlausible(H, w, h){
-  if(H.some(v => !isFinite(v))) return false;
-  if(Math.abs(H[6])*w > 0.85 || Math.abs(H[7])*h > 0.85) return false;
-  const det2x2 = H[0]*H[4]-H[1]*H[3];
-  const scale = Math.sqrt(Math.abs(det2x2))/Math.abs(H[8]||1);
-  if(scale < 0.3 || scale > 3.2) return false;
-  const corners = [[0,0],[w,0],[w,h],[0,h]].map(([x,y])=>applyH(H,x,y));
-  let area=0;
-  for(let i=0;i<4;i++){ const [x1,y1]=corners[i], [x2,y2]=corners[(i+1)%4]; area += x1*y2 - x2*y1; }
-  area = Math.abs(area)/2;
-  const origArea = w*h;
-  if(area < origArea*0.3 || area > origArea*3.3) return false;
-  for(let i=0;i<4;i++){
-    const [ax,ay]=corners[i], [bx,by]=corners[(i+1)%4], [cx,cy]=corners[(i+2)%4];
-    const cross = (bx-ax)*(cy-ay)-(by-ay)*(cx-ax);
-    if(i===0) var sign = Math.sign(cross);
-    else if(Math.sign(cross)!==sign && Math.sign(cross)!==0) return false;
-  }
-  return true;
-}
-
-// =========================================================
-// OpenCV.js: deteccion + matching + homografia con ventana de busqueda acotada
-// =========================================================
-let cvReadyPromise=null;
-function ensureOpenCV(){
-  if(cvReadyPromise) return cvReadyPromise;
-  cvReadyPromise = new Promise((resolve,reject)=>{
-    if(window.cv && window.cv.Mat){ resolve(); return; }
-    const s = document.createElement('script');
-    s.src='https://docs.opencv.org/4.x/opencv.js'; s.async=true;
-    s.onload = () => { cv['onRuntimeInitialized']=()=>resolve(); };
-    s.onerror = () => reject(new Error('No se pudo descargar OpenCV.js (revisa tu conexión).'));
-    document.head.appendChild(s);
-  });
-  return cvReadyPromise;
-}
-function detectFeatures(canvas){
-  const src = cv.imread(canvas);
-  const gray = new cv.Mat();
-  cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-  const orb = new cv.ORB(1200);
-  const keypoints = new cv.KeyPointVector();
-  const descriptors = new cv.Mat();
-  const mask = new cv.Mat();
-  orb.detectAndCompute(gray, mask, keypoints, descriptors);
-  src.delete(); gray.delete(); mask.delete(); orb.delete();
-  return {keypoints, descriptors};
-}
-function deleteFeat(f){ f.keypoints.delete(); f.descriptors.delete(); }
-
-// detailFeat: features del detalle (imagen "query"). regionFeat: features de la región de referencia (imagen "train").
-// devuelve H (detalle -> region) o null
-function estimateHomography(detailFeat, regionFeat, detailW, detailH){
-  if(detailFeat.descriptors.rows < 8 || regionFeat.descriptors.rows < 8) return null;
-  const bf = new cv.BFMatcher(cv.NORM_HAMMING, false);
-  const knn = new cv.DMatchVectorVector();
-  bf.knnMatch(detailFeat.descriptors, regionFeat.descriptors, knn, 2);
-  const good = [];
-  for(let i=0;i<knn.size();i++){
-    const m = knn.get(i);
-    if(m.size()<2) continue;
-    const m0=m.get(0), m1=m.get(1);
-    if(m0.distance < 0.75*m1.distance) good.push(m0);
-  }
-  knn.delete(); bf.delete();
-  if(good.length < 15) return null;
-
-  const srcArr=[], dstArr=[];
-  good.forEach(m=>{
-    const p1 = detailFeat.keypoints.get(m.queryIdx).pt;
-    const p2 = regionFeat.keypoints.get(m.trainIdx).pt;
-    srcArr.push(p1.x, p1.y); dstArr.push(p2.x, p2.y);
-  });
-  const srcMat = cv.matFromArray(good.length,1,cv.CV_32FC2, srcArr);
-  const dstMat = cv.matFromArray(good.length,1,cv.CV_32FC2, dstArr);
-  const maskMat = new cv.Mat();
-  const Hmat = cv.findHomography(srcMat, dstMat, cv.RANSAC, 4, maskMat);
-  let inliers=0;
-  for(let i=0;i<maskMat.rows;i++) if(maskMat.data[i]) inliers++;
-  srcMat.delete(); dstMat.delete(); maskMat.delete();
-  const inlierRatio = inliers/good.length;
-  if(Hmat.empty() || inliers < 15 || inlierRatio < 0.5){ Hmat.delete(); return null; }
-  const H = Array.from(Hmat.data64F);
-  Hmat.delete();
-  if(!isHomographyPlausible(H, detailW, detailH)) return null;
-  return H;
-}
-
-function warpAndPaste(destCtx, destCanvas, srcCanvas, H){
-  const corners=[[0,0],[srcCanvas.width,0],[srcCanvas.width,srcCanvas.height],[0,srcCanvas.height]];
-  const mapped = corners.map(([x,y])=>applyH(H,x,y));
-  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
-  mapped.forEach(([x,y])=>{minX=Math.min(minX,x);minY=Math.min(minY,y);maxX=Math.max(maxX,x);maxY=Math.max(maxY,y);});
-  minX=Math.max(0,Math.floor(minX)); minY=Math.max(0,Math.floor(minY));
-  maxX=Math.min(destCanvas.width,Math.ceil(maxX)); maxY=Math.min(destCanvas.height,Math.ceil(maxY));
-  if(maxX<=minX||maxY<=minY) return;
-  const Hinv = invertH(H);
-  const destData = destCtx.getImageData(0,0,destCanvas.width,destCanvas.height);
-  const dd = destData.data; const dW=destCanvas.width;
-  const srcData = srcCanvas.getContext('2d').getImageData(0,0,srcCanvas.width,srcCanvas.height).data;
-  const sw=srcCanvas.width, sh=srcCanvas.height;
-  for(let Y=minY;Y<maxY;Y++){
-    for(let X=minX;X<maxX;X++){
-      const [sx,sy]=applyH(Hinv,X,Y);
-      if(sx>=0&&sy>=0&&sx<sw-1&&sy<sh-1){
-        const x0=Math.floor(sx), y0=Math.floor(sy), fx=sx-x0, fy=sy-y0;
-        const di=(Y*dW+X)*4;
-        for(let c=0;c<3;c++){
-          const p00=srcData[(y0*sw+x0)*4+c], p10=srcData[(y0*sw+x0+1)*4+c];
-          const p01=srcData[((y0+1)*sw+x0)*4+c], p11=srcData[((y0+1)*sw+x0+1)*4+c];
-          dd[di+c]=p00*(1-fx)*(1-fy)+p10*fx*(1-fy)+p01*(1-fx)*fy+p11*fx*fy;
-        }
-        dd[di+3]=255;
-      }
-    }
-  }
-  destCtx.putImageData(destData,0,0);
-}
-
-// =========================================================
-// Paso 3: ensamblar (ancla cada detalle contra su región de referencia)
+// Paso 3: ensamblar (cada fila se ancla contra su franja de referencia)
 // =========================================================
 let assembledDataUrl = null;
 $('btnAssemble').onclick = async () => {
   if(!referenceCanvas){ alert('Primero toma y corrige la foto de referencia (paso 1).'); return; }
-  const anyDetail = cells.some(c=>c.dataUrl);
+  const anyRow = rows.some(r=>r.stripCanvas);
   $('btnAssemble').disabled = true;
   $('progressBar').style.display='block'; $('progressBar').value=0;
   try{
     const finalCanvas = document.createElement('canvas');
-    finalCanvas.width = referenceCanvas.width; finalCanvas.height = referenceCanvas.height;
+    finalCanvas.width = referenceFullCanvas.width; finalCanvas.height = referenceFullCanvas.height;
     const fctx = finalCanvas.getContext('2d');
-    fctx.drawImage(referenceCanvas,0,0);
+    fctx.drawImage(referenceFullCanvas,0,0);
+    const sRef = referenceCanvas.width / referenceFullCanvas.width;
 
-    if(anyDetail){
+    if(anyRow){
       setStatus('Cargando motor de visión (OpenCV.js)...');
       await ensureOpenCV();
-      const effW = referenceCanvas.width/gridCols, effH = referenceCanvas.height/gridRows;
+      const effH = referenceCanvas.height/numRows;
       const marginPct = Math.max(0.1, Math.min(0.6, (parseFloat($('margin').value)||25)/100));
-      const toDo = cells.map((c,idx)=>({c,idx})).filter(o=>o.c.dataUrl);
+      const toDo = rows.map((r,idx)=>({r,idx})).filter(o=>o.r.stripCanvas);
       let matched=0;
       for(let k=0;k<toDo.length;k++){
-        const {c, idx} = toDo[k];
-        setStatus(`Alineando sección ${k+1} de ${toDo.length}...`);
+        const {r, idx} = toDo[k];
+        setStatus(`Alineando fila ${k+1} de ${toDo.length}...`);
         $('progressBar').value = k/toDo.length;
-        const row=Math.floor(idx/gridCols), col=idx%gridCols;
-        const cellX=col*effW, cellY=row*effH;
-        const mgX=effW*marginPct, mgY=effH*marginPct;
-        const rx=Math.max(0,cellX-mgX), ry=Math.max(0,cellY-mgY);
-        const rw=Math.min(referenceCanvas.width, cellX+effW+mgX)-rx;
-        const rh=Math.min(referenceCanvas.height, cellY+effH+mgY)-ry;
-        const refCrop = cropCanvasRegion(referenceCanvas, rx, ry, rw, rh);
+        const cellY = idx*effH;
+        const mgY = effH*marginPct;
+        const ry = Math.max(0, cellY-mgY);
+        const rh = Math.min(referenceCanvas.height, cellY+effH+mgY)-ry;
+        const refBand = cropCanvasRegion(referenceCanvas, 0, ry, referenceCanvas.width, rh);
 
-        const detailImg = await loadImage(c.dataUrl);
-        const detailCanvas = toWorkingCanvas(detailImg, WORK_MAXDIM);
+        // la tira puede ser más ancha/angosta que la referencia: se reescala para que su ancho coincida aprox.
+        const stripScaled = document.createElement('canvas');
+        const scaleToRef = referenceCanvas.width / r.stripCanvas.width;
+        stripScaled.width = referenceCanvas.width;
+        stripScaled.height = Math.round(r.stripCanvas.height*scaleToRef);
+        stripScaled.getContext('2d').drawImage(r.stripCanvas,0,0,stripScaled.width,stripScaled.height);
 
-        const detailFeat = detectFeatures(detailCanvas);
-        const regionFeat = detectFeatures(refCrop);
-        const H = estimateHomography(detailFeat, regionFeat, detailCanvas.width, detailCanvas.height);
-        deleteFeat(detailFeat); deleteFeat(regionFeat);
+        const stripFeat = detectFeatures(stripScaled, 1200);
+        const bandFeat = detectFeatures(refBand, 1200);
+        const H = estimateHomography(stripFeat, bandFeat, stripScaled.width, stripScaled.height, {minGood:15, minInliers:15, minRatio:0.45});
+        deleteFeat(stripFeat); deleteFeat(bandFeat);
 
         if(H){
-          const T = [1,0,rx, 0,1,ry, 0,0,1];
-          const Hfull = multiplyH(T, H);
-          warpAndPaste(fctx, finalCanvas, detailCanvas, Hfull);
+          const T = [1,0,0, 0,1,ry, 0,0,1];
+          const Hworking = multiplyH(T, H); // tira(escalada a ref) -> referencia(trabajo)
+          // reescalar a resolución real de salida
+          const sStripToScaled = scaleToRef; // stripFullCanvas -> stripScaled equivalente
+          const sStripFullToScaled = stripScaled.width / r.stripFullCanvas.width;
+          const Sstrip = [sStripFullToScaled,0,0, 0,sStripFullToScaled,0, 0,0,1];
+          const SrefInv = [1/sRef,0,0, 0,1/sRef,0, 0,0,1];
+          const Hfull = multiplyH(SrefInv, multiplyH(Hworking, Sstrip));
+          warpAndPaste(fctx, finalCanvas, r.stripFullCanvas, Hfull);
           matched++;
         }
       }
       $('progressBar').value=1;
-      setStatus(`${matched} de ${toDo.length} secciones de detalle alineadas automáticamente. Las demás zonas muestran la foto de referencia.`, matched<toDo.length?'warn':'');
+      setStatus(`${matched} de ${toDo.length} filas alineadas automáticamente. Las demás zonas muestran la foto de referencia.`, matched<toDo.length?'warn':'');
     } else {
-      setStatus('Usando solo la foto de referencia (no agregaste secciones de detalle).');
+      setStatus('Usando solo la foto de referencia, a su resolución real.');
     }
 
     assembledDataUrl = finalCanvas.toDataURL('image/jpeg',0.95);
