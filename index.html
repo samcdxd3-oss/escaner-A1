@@ -138,12 +138,12 @@
     <progress id="progressBar" value="0" max="1" style="display:none"></progress>
     <canvas id="resultCanvas"></canvas>
     <div class="box" id="tipsBox">
-      <b>Cómo funciona:</b>
+      <b>Recomendación importante para planos (mucho texto/líneas repetidas):</b>
       <ul class="tips">
-        <li>Detecta puntos únicos en cada foto (esquinas de texto, cruces de líneas) y busca cuáles coinciden entre pares de fotos, sin que tú indiques el orden.</li>
-        <li>Con esas coincidencias calcula automáticamente cómo rotar, escalar y corregir la perspectiva de cada foto para que encajen.</li>
-        <li>Si alguna foto no comparte suficiente contenido reconocible con las demás, quedará marcada como "no emparejada" y podrás acomodarla a mano en el paso 4b.</li>
-        <li>Se trabaja a una resolución reducida (lado más largo ≈1400px) para que el proceso sea rápido en el celular; suficiente para leer un plano impreso.</li>
+        <li><b>Mejor opción:</b> usa el modo "Panorama" nativo de la cámara de tu celular para todo el plano (o por secciones) y sube esa(s) foto(s) ya armada(s) aquí — si subes solo 1 foto, se usa directo como plano final, sin pasar por el motor de unión.</li>
+        <li><b>Si tomas fotos sueltas:</b> hazlo como una toma continua (muévete despacio, poco a poco, mucho solape entre una y la siguiente) en vez de fotos independientes desde ángulos muy distintos — así el emparejamiento automático es mucho más confiable.</li>
+        <li>El sistema ahora valida cada unión antes de aceptarla (rechaza perspectivas imposibles) — si una foto no calza con confianza, queda como "no emparejada" en vez de deformar el plano.</li>
+        <li>Los planos tienen líneas y textos repetidos que pueden confundir la detección de puntos; entre más solape y menos cambio de ángulo entre tomas vecinas, mejor resultado.</li>
       </ul>
     </div>
   </section>
@@ -402,6 +402,36 @@ function applyH(H,x,y){
   return [ (H[0]*x+H[1]*y+H[2])/denom, (H[3]*x+H[4]*y+H[5])/denom ];
 }
 
+// Rechaza homografías absurdas (el efecto "avión de papel"): perspectiva extrema,
+// escalas irreales, o área resultante muy distinta a la original.
+function isHomographyPlausible(H, w, h){
+  if(H.some(v => !isFinite(v))) return false;
+  // términos de perspectiva demasiado fuertes en relación al tamaño de la imagen
+  if(Math.abs(H[6])*w > 0.85 || Math.abs(H[7])*h > 0.85) return false;
+  // escala del bloque lineal (evita que la imagen se infle o encoja de forma irreal)
+  const det2x2 = H[0]*H[4]-H[1]*H[3];
+  const scale = Math.sqrt(Math.abs(det2x2))/Math.abs(H[8]||1);
+  if(scale < 0.25 || scale > 4) return false;
+  // el área proyectada no debe ser muy distinta al área original
+  const corners = [[0,0],[w,0],[w,h],[0,h]].map(([x,y])=>applyH(H,x,y));
+  let area=0;
+  for(let i=0;i<4;i++){
+    const [x1,y1]=corners[i], [x2,y2]=corners[(i+1)%4];
+    area += x1*y2 - x2*y1;
+  }
+  area = Math.abs(area)/2;
+  const origArea = w*h;
+  if(area < origArea*0.2 || area > origArea*5) return false;
+  // el cuadrilátero proyectado debe seguir siendo convexo y no "cruzarse" sobre sí mismo
+  for(let i=0;i<4;i++){
+    const [ax,ay]=corners[i], [bx,by]=corners[(i+1)%4], [cx,cy]=corners[(i+2)%4];
+    const cross = (bx-ax)*(cy-ay)-(by-ay)*(cx-ax);
+    if(i===0) var sign = Math.sign(cross);
+    else if(Math.sign(cross)!==sign && Math.sign(cross)!==0) return false;
+  }
+  return true;
+}
+
 // ---------- OpenCV.js loader ----------
 let cvReadyPromise = null;
 function ensureOpenCV(){
@@ -428,7 +458,7 @@ function detectFeatures(canvas){
   const mask = new cv.Mat();
   orb.detectAndCompute(gray, mask, keypoints, descriptors);
   src.delete(); gray.delete(); mask.delete(); orb.delete();
-  return { keypoints, descriptors };
+  return { keypoints, descriptors, _w: canvas.width, _h: canvas.height };
 }
 function deleteFeatures(f){ f.keypoints.delete(); f.descriptors.delete(); }
 
@@ -446,7 +476,7 @@ function estimateHomography(imgFeat, panoFeat){
     if(m0.distance < 0.75*m1.distance) good.push(m0);
   }
   knn.delete(); bf.delete();
-  if(good.length < 12) return null;
+  if(good.length < 20) return null;
 
   const srcArr=[], dstArr=[];
   good.forEach(m=>{
@@ -457,13 +487,15 @@ function estimateHomography(imgFeat, panoFeat){
   const srcMat = cv.matFromArray(good.length,1,cv.CV_32FC2, srcArr);
   const dstMat = cv.matFromArray(good.length,1,cv.CV_32FC2, dstArr);
   const maskMat = new cv.Mat();
-  const Hmat = cv.findHomography(srcMat, dstMat, cv.RANSAC, 4, maskMat);
+  const Hmat = cv.findHomography(srcMat, dstMat, cv.RANSAC, 3, maskMat);
   let inliers=0;
   for(let i=0;i<maskMat.rows;i++) if(maskMat.data[i]) inliers++;
   srcMat.delete(); dstMat.delete(); maskMat.delete();
-  if(Hmat.empty() || inliers < 10){ Hmat.delete(); return null; }
+  const inlierRatio = inliers/good.length;
+  if(Hmat.empty() || inliers < 20 || inlierRatio < 0.55){ Hmat.delete(); return null; }
   const H = Array.from(Hmat.data64F);
   Hmat.delete();
+  if(!isHomographyPlausible(H, imgFeat._w, imgFeat._h)){ return null; }
   return H;
 }
 
@@ -525,7 +557,25 @@ function setStatus(text, kind){
 
 $('btnStitch').onclick = async () => {
   const pending = photos.filter(p=>!p.used);
-  if(pending.length < 2){ alert('Necesitas al menos 2 fotos.'); return; }
+  if(pending.length === 0){ alert('Agrega al menos 1 foto.'); return; }
+
+  // Si solo hay 1 foto (por ejemplo una panorámica ya armada por la cámara nativa del celular),
+  // se usa directamente, sin pasar por el motor de unión.
+  if(pending.length === 1){
+    pending[0].used = true;
+    renderThumbs();
+    assembledDataUrl = pending[0].dataUrl;
+    const img = await loadImage(assembledDataUrl);
+    const resultCanvas = $('resultCanvas');
+    resultCanvas.width = img.width; resultCanvas.height = img.height;
+    resultCanvas.getContext('2d').drawImage(img,0,0);
+    resultCanvas.style.display='block';
+    $('btnExport').disabled = false;
+    $('exportHint').textContent = 'Listo para descargar.';
+    setStatus('Una sola foto: se usa directamente como plano final (ideal si ya es una panorámica).');
+    return;
+  }
+
   $('btnStitch').disabled = true;
   $('progressBar').style.display='block';
   try{
