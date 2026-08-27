@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
-<title>Scanner de Planos - Unión automática</title>
+<title>Scanner de Planos - Captura guiada</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
   :root{
@@ -25,26 +25,32 @@
   button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
   button.good{background:var(--accent2);border-color:var(--accent2);color:#06210f;font-weight:600}
   button.danger{background:transparent;border-color:var(--danger);color:var(--danger)}
+  button.small{padding:5px 9px;font-size:12px}
   button:disabled{opacity:.4;cursor:not-allowed}
-  input[type=number], input[type=text], select{background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:8px;border-radius:8px;font-size:14px;width:90px}
+  input[type=number], select{background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:8px;border-radius:8px;font-size:14px;width:80px}
   input[type=range]{width:160px}
   label{font-size:13px;color:var(--muted)}
-  video{width:100%;border-radius:10px;background:#000;max-height:60vh}
-  .thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-  .thumb{position:relative;border:1px solid var(--line);border-radius:8px;overflow:hidden;width:90px;height:120px;flex:none}
-  .thumb img{width:100%;height:100%;object-fit:cover;display:block}
-  .thumb .num{position:absolute;top:2px;left:2px;background:rgba(0,0,0,.6);font-size:10px;padding:1px 5px;border-radius:6px}
-  .thumb .del{position:absolute;top:2px;right:2px;background:rgba(255,60,60,.85);border:none;color:#fff;width:20px;height:20px;border-radius:50%;font-size:12px;line-height:1;cursor:pointer;padding:0}
-  .thumb .fix{position:absolute;bottom:2px;left:2px;right:2px;background:rgba(0,0,0,.6);border:none;color:#fff;font-size:10px;padding:3px;border-radius:4px;cursor:pointer}
-  .thumb.usada{opacity:.35}
-  .thumb.huerfana{outline:2px solid var(--warn)}
-  #cropModal{position:fixed;inset:0;background:rgba(0,0,0,.85);display:none;align-items:center;justify-content:center;z-index:50;flex-direction:column;padding:10px}
-  #cropModal.open{display:flex}
-  #cropCanvas{max-width:95vw;max-height:70vh;touch-action:none;border:1px solid var(--line);border-radius:8px}
+  video{width:100%;border-radius:10px;background:#000;max-height:55vh;display:block}
+  .camWrap{position:relative}
+  .camOverlay{position:absolute;inset:0;pointer-events:none;border:3px dashed rgba(79,140,255,.85);margin:8%;border-radius:10px}
+  .camLabel{position:absolute;top:8px;left:8px;background:rgba(0,0,0,.65);padding:4px 10px;border-radius:20px;font-size:12px}
   .muted{color:var(--muted);font-size:12px}
   .hint{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.5}
   #videoScrub{width:100%}
-  #resultCanvas{max-width:100%;border:1px solid var(--line);border-radius:8px;display:none;margin-top:10px;background:#222}
+
+  #fpMap{display:grid;gap:4px;margin-top:10px;touch-action:manipulation;}
+  .fpCell{position:relative;border-radius:6px;border:2px solid var(--line);background-size:cover;background-position:center;background-color:#20242c;cursor:pointer;min-height:40px;overflow:hidden;}
+  .fpCell.filled{border-color:var(--accent2);}
+  .fpCell.target{border-color:var(--accent);box-shadow:0 0 0 3px rgba(79,140,255,.35);}
+  .fpCell .mark{position:absolute;bottom:2px;right:3px;font-size:11px;background:rgba(0,0,0,.6);border-radius:4px;padding:0 3px;}
+  #cellActions{display:none;margin-top:10px}
+  #cellActions.open{display:flex}
+
+  #cropModal{position:fixed;inset:0;background:rgba(0,0,0,.85);display:none;align-items:center;justify-content:center;z-index:50;flex-direction:column;padding:10px}
+  #cropModal.open{display:flex}
+  #cropCanvas{max-width:95vw;max-height:70vh;touch-action:none;border:1px solid var(--line);border-radius:8px}
+
+  #assembledCanvas{max-width:100%;border:1px solid var(--line);border-radius:8px;display:none;margin-top:10px;background:#222}
   .box{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px;font-size:13px;margin-top:8px}
   .box b{color:var(--text)}
   ul.tips{margin:6px 0 0 18px;padding:0;color:var(--muted);font-size:12.5px;line-height:1.6}
@@ -52,22 +58,13 @@
   #status.warn{color:var(--warn)}
   #status.err{color:var(--danger)}
   progress{width:100%;accent-color:var(--accent)}
-  #manualSection{display:none}
-  #workspaceWrap{overflow:auto;border:1px solid var(--line);border-radius:8px;margin-top:10px;background:repeating-conic-gradient(#26292f 0% 25%, #1c1e24 0% 50%) 50%/16px 16px;}
-  #workspace{position:relative;background:rgba(255,255,255,.03);touch-action:none;}
-  .pitem{position:absolute;border:2px solid transparent;cursor:grab;user-select:none;}
-  .pitem.locked{cursor:default}
-  .pitem.sel{border-color:var(--accent);}
-  .pitem img{width:100%;height:100%;display:block;pointer-events:none;}
-  .pitem .handle{position:absolute;width:22px;height:22px;right:-11px;bottom:-11px;background:var(--accent);border-radius:50%;cursor:nwse-resize;}
-  .pitem .del2{position:absolute;top:-11px;right:-11px;width:22px;height:22px;background:var(--danger);border-radius:50%;border:none;color:#fff;font-size:12px;line-height:1;cursor:pointer;}
 </style>
 </head>
 <body>
 
 <header>
-  <h1>📐 Scanner de Planos — Unión automática</h1>
-  <p>Sube las fotos en cualquier orden y ángulo. El sistema busca puntos en común entre ellas (texto, líneas, símbolos) y las une solo.</p>
+  <h1>📐 Scanner de Planos — Captura guiada</h1>
+  <p>Como una huella dactilar: el mapa se va llenando sección por sección hasta cubrir todo el plano.</p>
 </header>
 
 <main>
@@ -75,7 +72,7 @@
   <section>
     <h2><span class="step">0</span> Formato de salida</h2>
     <div class="row">
-      <label>Tamaño de hoja<br>
+      <label>Hoja<br>
         <select id="pageSize">
           <option value="A0">A0</option>
           <option value="A1" selected>A1</option>
@@ -96,74 +93,70 @@
         <label>Alto cm<br><input type="number" id="customH" value="90"></label>
       </div>
     </div>
-    <p class="hint">El plano unido se ajustará a esta hoja al exportar el PDF (conservando su proporción real, sin deformarlo).</p>
   </section>
 
   <section>
-    <h2><span class="step">1</span> Capturar fotos con la cámara</h2>
+    <h2><span class="step">1</span> Cuadrícula de captura</h2>
+    <div class="row">
+      <label>Filas<br><input type="number" id="gridRows" value="2" min="1" max="6"></label>
+      <label>Columnas<br><input type="number" id="gridCols" value="3" min="1" max="6"></label>
+      <label>Solape entre secciones %<br><input type="number" id="overlap" value="20" min="5" max="40"></label>
+      <button class="primary" id="btnApplyGrid">Aplicar cuadrícula</button>
+    </div>
+    <p class="hint">Divide el plano en secciones imaginarias, como un tablero. Entre más secciones, más fácil que cada foto quede nítida — pero más fotos que tomar. 2x3 o 3x3 suele bastar para un A1.</p>
+    <div id="fpMap"></div>
+    <div id="cellActions" class="row">
+      <span class="muted" id="cellActionsLabel"></span>
+      <button class="small" id="btnRetake">🔄 Re-tomar</button>
+      <button class="small" id="btnFixCell">📐 Corregir perspectiva</button>
+    </div>
+  </section>
+
+  <section id="captureSection">
+    <h2><span class="step">2</span> Capturar sección: <span id="targetLabel">-</span></h2>
     <div class="row">
       <button class="primary" id="btnStartCam">Activar cámara</button>
       <button id="btnSwitchCam" disabled>Cambiar cámara</button>
-      <button id="btnCapture" class="good" disabled>📸 Capturar foto</button>
+      <button id="btnCapture" class="good" disabled>📸 Capturar esta sección</button>
       <button id="btnStopCam" disabled>Apagar cámara</button>
     </div>
-    <video id="video" autoplay playsinline muted style="margin-top:10px;display:none"></video>
-    <p class="hint">Toma las fotos que quieras, desde cualquier posición, siempre que cada una comparta al menos un 20-30% de área con alguna otra foto (algo del plano en común entre ellas).</p>
-  </section>
+    <div class="camWrap">
+      <video id="video" autoplay playsinline muted style="display:none"></video>
+      <div class="camOverlay" id="camOverlay" style="display:none"></div>
+      <div class="camLabel" id="camLabel" style="display:none"></div>
+    </div>
+    <p class="hint">El recuadro punteado es solo una guía de encuadre — acomoda esa parte del plano dentro de él, dejando algo de margen hacia los lados donde ya capturaste (o vas a capturar) las secciones vecinas.</p>
 
-  <section>
-    <h2><span class="step">2</span> O extraer fotogramas de un video</h2>
-    <div class="row">
+    <div class="row" style="margin-top:12px">
       <input type="file" id="videoFile" accept="video/*">
     </div>
     <video id="videoPlayer" controls style="margin-top:10px;display:none"></video>
-    <div class="row" style="margin-top:8px">
-      <input type="range" id="videoScrub" min="0" max="1" step="0.01" value="0" style="display:none">
-    </div>
-    <button id="btnGrabFrame" style="margin-top:8px" disabled>🖼️ Capturar fotograma actual</button>
+    <div class="row" style="margin-top:8px"><input type="range" id="videoScrub" min="0" max="1" step="0.01" value="0" style="display:none"></div>
+    <button id="btnGrabFrame" style="margin-top:8px" disabled>🖼️ Usar fotograma actual para esta sección</button>
   </section>
 
   <section>
-    <h2><span class="step">3</span> Fotos (<span id="countPhotos">0</span>)</h2>
-    <div class="thumbs" id="thumbs"></div>
-    <p class="hint">Opcional: si una foto quedó muy torcida, toca "Corregir" para enderezar sus 4 esquinas antes de unir — ayuda a que el sistema encuentre coincidencias.</p>
-  </section>
-
-  <section>
-    <h2><span class="step">4</span> Unir automáticamente</h2>
+    <h2><span class="step">3</span> Ensamblar</h2>
     <div class="row">
-      <button class="primary" id="btnStitch">🧵 Unir todas las fotos</button>
+      <button class="good" id="btnAssemble">🧩 Generar plano</button>
+      <button id="btnRefine" disabled>✨ Afinar bordes automáticamente (beta)</button>
     </div>
     <div id="status"></div>
     <progress id="progressBar" value="0" max="1" style="display:none"></progress>
-    <canvas id="resultCanvas"></canvas>
-    <div class="box" id="tipsBox">
-      <b>Recomendación importante para planos (mucho texto/líneas repetidas):</b>
+    <canvas id="assembledCanvas"></canvas>
+    <div class="box">
+      <b>Por qué este método es más confiable:</b>
       <ul class="tips">
-        <li><b>Mejor opción:</b> usa el modo "Panorama" nativo de la cámara de tu celular para todo el plano (o por secciones) y sube esa(s) foto(s) ya armada(s) aquí — si subes solo 1 foto, se usa directo como plano final, sin pasar por el motor de unión.</li>
-        <li><b>Si tomas fotos sueltas:</b> hazlo como una toma continua (muévete despacio, poco a poco, mucho solape entre una y la siguiente) en vez de fotos independientes desde ángulos muy distintos — así el emparejamiento automático es mucho más confiable.</li>
-        <li>El sistema ahora valida cada unión antes de aceptarla (rechaza perspectivas imposibles) — si una foto no calza con confianza, queda como "no emparejada" en vez de deformar el plano.</li>
-        <li>Los planos tienen líneas y textos repetidos que pueden confundir la detección de puntos; entre más solape y menos cambio de ángulo entre tomas vecinas, mejor resultado.</li>
+        <li>Como tú decides qué sección va en cada casilla, el sistema no tiene que adivinar el orden ni la posición — eso elimina la principal causa de errores de antes.</li>
+        <li>"Afinar bordes" es opcional: solo desliza un poco cada sección para hacerla calzar mejor con su vecina, usando puntos en común reales, y nunca deforma la perspectiva ni hace ajustes grandes — si no está seguro, deja la sección tal cual.</li>
       </ul>
     </div>
   </section>
 
-  <section id="manualSection">
-    <h2><span class="step">4b</span> Fotos no emparejadas — acomódalas a mano</h2>
-    <p class="hint">Estas fotos no encontraron suficientes coincidencias automáticas. El plano ya unido queda fijo de fondo; arrastra cada foto restante hasta su lugar aproximado.</p>
-    <div class="row">
-      <label>Transparencia<br><input type="range" id="opacitySlider" min="30" max="100" value="100"></label>
-      <button class="good" id="btnFlattenManual">✅ Incorporar al plano final</button>
-    </div>
-    <div id="workspaceWrap"><div id="workspace"></div></div>
-  </section>
-
   <section>
-    <h2><span class="step">5</span> Exportar a PDF</h2>
-    <div class="row">
-      <button class="good" id="btnExport" disabled>⬇️ Descargar PDF</button>
-    </div>
-    <p class="hint" id="exportHint">Une las fotos primero (paso 4).</p>
+    <h2><span class="step">4</span> Exportar a PDF</h2>
+    <div class="row"><button class="good" id="btnExport" disabled>⬇️ Descargar PDF</button></div>
+    <p class="hint" id="exportHint">Genera primero el plano (paso 3).</p>
   </section>
 
 </main>
@@ -175,22 +168,13 @@
     <button id="btnCropReset">Reiniciar esquinas</button>
     <button id="btnCropCancel" class="danger">Cancelar</button>
   </div>
-  <p class="hint" style="max-width:500px;text-align:center">Arrastra los 4 puntos hasta las esquinas reales del plano en la foto, luego pulsa "Aplicar corrección".</p>
 </div>
 
 <script>
 const $ = (id) => document.getElementById(id);
 const SIZES_MM = { A0:[841,1189], A1:[594,841], A2:[420,594], A3:[297,420], A4:[210,297] };
-const WORK_MAXDIM = 1400; // resolución de trabajo por foto
 
-// ---------- estado ----------
-let photos = []; // {id, dataUrl, corrected, used}
-let photoSeq = 0;
-let stream = null;
-let currentFacing = 'environment';
-let assembledDataUrl = null;
-let orphanQueue = []; // {photoId, canvas}
-
+// ---------- formato ----------
 function getPageMM(){
   const key = $('pageSize').value;
   let w,h;
@@ -203,35 +187,99 @@ function getPageMM(){
 }
 $('pageSize').onchange = (e)=>{ $('customSize').style.display = e.target.value==='custom' ? 'flex' : 'none'; };
 
+// ---------- cuadrícula (mapa tipo huella) ----------
+let gridRows=2, gridCols=3;
+let cells = []; // {dataUrl:null, corrected:false}
+let currentIdx = 0;
+let selectedIdx = -1;
+
+function buildCells(rows, cols, preserve){
+  const n = rows*cols;
+  const old = cells;
+  cells = new Array(n).fill(null).map((_,i)=> (preserve && old[i]) ? old[i] : {dataUrl:null, corrected:false});
+  gridRows=rows; gridCols=cols;
+  currentIdx = cells.findIndex(c=>!c.dataUrl);
+  if(currentIdx===-1) currentIdx=0;
+  renderMap();
+  updateTargetUI();
+}
+$('btnApplyGrid').onclick = () => {
+  const rows = Math.max(1, Math.min(6, parseInt($('gridRows').value)||1));
+  const cols = Math.max(1, Math.min(6, parseInt($('gridCols').value)||1));
+  const hasData = cells.some(c=>c && c.dataUrl);
+  if(hasData && (rows!==gridRows || cols!==gridCols)){
+    if(!confirm('Cambiar el tamaño de la cuadrícula borrará las secciones ya capturadas. ¿Continuar?')) return;
+    buildCells(rows, cols, false);
+  } else {
+    buildCells(rows, cols, true);
+  }
+};
+
+function renderMap(){
+  const map = $('fpMap');
+  const {w:pageW, h:pageH} = getPageMM();
+  map.style.gridTemplateColumns = `repeat(${gridCols}, 1fr)`;
+  map.style.aspectRatio = `${pageW} / ${pageH}`;
+  map.innerHTML='';
+  cells.forEach((c, idx)=>{
+    const div = document.createElement('div');
+    div.className = 'fpCell' + (c.dataUrl?' filled':'') + (idx===currentIdx?' target':'');
+    if(c.dataUrl) div.style.backgroundImage = `url(${c.dataUrl})`;
+    div.innerHTML = c.corrected ? '<span class="mark">📐</span>' : '';
+    div.onclick = () => selectCell(idx);
+    map.appendChild(div);
+  });
+}
+function selectCell(idx){
+  selectedIdx = idx;
+  currentIdx = idx;
+  renderMap();
+  updateTargetUI();
+  if(cells[idx].dataUrl){
+    $('cellActions').classList.add('open');
+    $('cellActionsLabel').textContent = `Sección fila ${Math.floor(idx/gridCols)+1}, columna ${idx%gridCols+1}`;
+  } else {
+    $('cellActions').classList.remove('open');
+  }
+}
+function updateTargetUI(){
+  const r = Math.floor(currentIdx/gridCols)+1, c = (currentIdx%gridCols)+1;
+  $('targetLabel').textContent = `fila ${r} de ${gridRows}, columna ${c} de ${gridCols}`;
+  $('camLabel').textContent = `Sección ${r}-${c}`;
+}
+$('btnRetake').onclick = () => { cells[selectedIdx] = {dataUrl:null, corrected:false}; currentIdx=selectedIdx; renderMap(); updateTargetUI(); $('cellActions').classList.remove('open'); };
+$('btnFixCell').onclick = () => openCropModal(selectedIdx);
+
+buildCells(gridRows, gridCols, false);
+
 // ---------- cámara ----------
 const video = $('video');
+let stream=null, currentFacing='environment';
 $('btnStartCam').onclick = async () => {
   try{
     if(stream) stream.getTracks().forEach(t=>t.stop());
-    stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:currentFacing}, audio:false});
+    stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:currentFacing, width:{ideal:1920}, height:{ideal:1080}}, audio:false});
     video.srcObject = stream;
-    video.style.display='block';
-    $('btnCapture').disabled=false;
-    $('btnStopCam').disabled=false;
-    $('btnSwitchCam').disabled=false;
+    video.style.display='block'; $('camOverlay').style.display='block'; $('camLabel').style.display='block';
+    $('btnCapture').disabled=false; $('btnStopCam').disabled=false; $('btnSwitchCam').disabled=false;
   }catch(e){
-    alert('No se pudo acceder a la cámara: '+e.message+'\nDebe abrirse por HTTPS (ej. GitHub Pages) para usar la cámara.');
+    alert('No se pudo acceder a la cámara: '+e.message+'\nDebe abrirse por HTTPS (ej. GitHub Pages).');
   }
 };
 $('btnSwitchCam').onclick = async () => { currentFacing = currentFacing==='environment'?'user':'environment'; $('btnStartCam').onclick(); };
 $('btnStopCam').onclick = () => {
   if(stream) stream.getTracks().forEach(t=>t.stop());
-  video.style.display='none';
+  video.style.display='none'; $('camOverlay').style.display='none'; $('camLabel').style.display='none';
   $('btnCapture').disabled=true; $('btnStopCam').disabled=true; $('btnSwitchCam').disabled=true;
 };
 $('btnCapture').onclick = () => {
   const c = document.createElement('canvas');
   c.width = video.videoWidth; c.height = video.videoHeight;
   c.getContext('2d').drawImage(video,0,0);
-  addPhoto(c.toDataURL('image/jpeg',0.92));
+  assignToCurrentCell(c.toDataURL('image/jpeg',0.92));
 };
 
-// ---------- video subido ----------
+// ---------- video subido (alternativa por sección) ----------
 const videoPlayer = $('videoPlayer');
 $('videoFile').onchange = (e) => {
   const f = e.target.files[0]; if(!f) return;
@@ -245,43 +293,27 @@ $('btnGrabFrame').onclick = () => {
   const c = document.createElement('canvas');
   c.width = videoPlayer.videoWidth; c.height = videoPlayer.videoHeight;
   c.getContext('2d').drawImage(videoPlayer,0,0);
-  addPhoto(c.toDataURL('image/jpeg',0.92));
+  assignToCurrentCell(c.toDataURL('image/jpeg',0.92));
 };
 
-// ---------- gestión de fotos ----------
-function addPhoto(dataUrl){
-  photos.push({id: ++photoSeq, dataUrl, corrected:false, used:false});
-  renderThumbs();
-}
-function renderThumbs(){
-  $('countPhotos').textContent = photos.length;
-  const box = $('thumbs'); box.innerHTML='';
-  photos.forEach((p, idx) => {
-    const div = document.createElement('div');
-    div.className='thumb'+(p.used?' usada':'');
-    div.innerHTML = `<img src="${p.dataUrl}"><span class="num">${idx+1}</span><button class="del" title="Eliminar">×</button><button class="fix">Corregir</button>`;
-    div.querySelector('.del').onclick = () => { photos.splice(idx,1); renderThumbs(); };
-    div.querySelector('.fix').onclick = () => openCropModal(idx);
-    box.appendChild(div);
-  });
+function assignToCurrentCell(dataUrl){
+  cells[currentIdx] = {dataUrl, corrected:false};
+  const next = cells.findIndex(c=>!c.dataUrl);
+  currentIdx = next===-1 ? currentIdx : next;
+  renderMap();
+  updateTargetUI();
+  $('cellActions').classList.remove('open');
 }
 function loadImage(src){ return new Promise(res=>{ const i=new Image(); i.onload=()=>res(i); i.src=src; }); }
-function toWorkingCanvas(img, maxDim){
-  const scale = Math.min(1, maxDim/Math.max(img.width, img.height));
-  const c = document.createElement('canvas');
-  c.width = Math.round(img.width*scale); c.height = Math.round(img.height*scale);
-  c.getContext('2d').drawImage(img,0,0,c.width,c.height);
-  return c;
-}
 
-// ---------- corrección de perspectiva manual (opcional, homografía de 4 puntos) ----------
+// ---------- corrección de perspectiva por sección (opcional) ----------
 const cropModal = $('cropModal');
 const cropCanvas = $('cropCanvas');
 let cropCtx = cropCanvas.getContext('2d');
-let cropImg = null, cropPoints = [], cropIndex = -1, draggingPt = -1, scaleFactor = 1;
-
+let cropImg=null, cropPoints=[], cropIdx=-1, draggingPt=-1, scaleFactor=1;
 function openCropModal(idx){
-  cropIndex = idx;
+  if(!cells[idx] || !cells[idx].dataUrl) return;
+  cropIdx = idx;
   cropImg = new Image();
   cropImg.onload = () => {
     const maxW = Math.min(window.innerWidth*0.95, 900), maxH = window.innerHeight*0.7;
@@ -291,7 +323,7 @@ function openCropModal(idx){
     cropPoints = [{x:m,y:mh},{x:cropCanvas.width-m,y:mh},{x:cropCanvas.width-m,y:cropCanvas.height-mh},{x:m,y:cropCanvas.height-mh}];
     drawCrop(); cropModal.classList.add('open');
   };
-  cropImg.src = photos[idx].dataUrl;
+  cropImg.src = cells[idx].dataUrl;
 }
 function drawCrop(){
   cropCtx.clearRect(0,0,cropCanvas.width,cropCanvas.height);
@@ -310,10 +342,10 @@ function ptFromEvent(e){
 }
 function startDrag(e){
   const p = ptFromEvent(e); let best=-1, bestD=99999;
-  cropPoints.forEach((cp,i)=>{ const d = Math.hypot(cp.x-p.x, cp.y-p.y); if(d<40 && d<bestD){bestD=d;best=i;} });
+  cropPoints.forEach((cp,i)=>{ const d=Math.hypot(cp.x-p.x, cp.y-p.y); if(d<40 && d<bestD){bestD=d;best=i;} });
   draggingPt = best;
 }
-function moveDrag(e){ if(draggingPt<0) return; e.preventDefault(); cropPoints[draggingPt] = ptFromEvent(e); drawCrop(); }
+function moveDrag(e){ if(draggingPt<0) return; e.preventDefault(); cropPoints[draggingPt]=ptFromEvent(e); drawCrop(); }
 function endDrag(){ draggingPt=-1; }
 cropCanvas.addEventListener('mousedown', startDrag);
 cropCanvas.addEventListener('mousemove', moveDrag);
@@ -322,32 +354,29 @@ cropCanvas.addEventListener('touchstart', startDrag, {passive:false});
 cropCanvas.addEventListener('touchmove', moveDrag, {passive:false});
 cropCanvas.addEventListener('touchend', endDrag);
 $('btnCropCancel').onclick = () => cropModal.classList.remove('open');
-$('btnCropReset').onclick = () => openCropModal(cropIndex);
+$('btnCropReset').onclick = () => openCropModal(cropIdx);
 $('btnCropApply').onclick = () => {
   const srcPts = cropPoints.map(p => ({x:p.x/scaleFactor, y:p.y/scaleFactor}));
   const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
   const outW = Math.round(Math.max(dist(srcPts[0],srcPts[1]),dist(srcPts[3],srcPts[2])));
   const outH = Math.round(Math.max(dist(srcPts[0],srcPts[3]),dist(srcPts[1],srcPts[2])));
   const dstPts = [{x:0,y:0},{x:outW,y:0},{x:outW,y:outH},{x:0,y:outH}];
-  const H8 = getHomography8(dstPts, srcPts); // 8 valores (h33=1), mapea salida->origen
-
+  const H8 = getHomography8(dstPts, srcPts);
   const outCanvas = document.createElement('canvas');
-  outCanvas.width = outW; outCanvas.height = outH;
+  outCanvas.width=outW; outCanvas.height=outH;
   const outCtx = outCanvas.getContext('2d');
-  const outData = outCtx.createImageData(outW, outH);
+  const outData = outCtx.createImageData(outW,outH);
   const srcCanvas = document.createElement('canvas');
-  srcCanvas.width = cropImg.width; srcCanvas.height = cropImg.height;
+  srcCanvas.width=cropImg.width; srcCanvas.height=cropImg.height;
   const srcCtx = srcCanvas.getContext('2d'); srcCtx.drawImage(cropImg,0,0);
   const srcData = srcCtx.getImageData(0,0,srcCanvas.width,srcCanvas.height).data;
-  const sw = srcCanvas.width, sh = srcCanvas.height;
-
+  const sw=srcCanvas.width, sh=srcCanvas.height;
   for(let y=0;y<outH;y++){
     for(let x=0;x<outW;x++){
-      const denom = H8[6]*x + H8[7]*y + 1;
-      const sx = (H8[0]*x + H8[1]*y + H8[2]) / denom;
-      const sy = (H8[3]*x + H8[4]*y + H8[5]) / denom;
-      const di = (y*outW+x)*4;
-      if(sx>=0 && sy>=0 && sx<sw-1 && sy<sh-1){
+      const denom = H8[6]*x+H8[7]*y+1;
+      const sx=(H8[0]*x+H8[1]*y+H8[2])/denom, sy=(H8[3]*x+H8[4]*y+H8[5])/denom;
+      const di=(y*outW+x)*4;
+      if(sx>=0&&sy>=0&&sx<sw-1&&sy<sh-1){
         const x0=Math.floor(sx), y0=Math.floor(sy), fx=sx-x0, fy=sy-y0;
         for(let c=0;c<4;c++){
           const p00=srcData[(y0*sw+x0)*4+c], p10=srcData[(y0*sw+x0+1)*4+c];
@@ -358,9 +387,9 @@ $('btnCropApply').onclick = () => {
     }
   }
   outCtx.putImageData(outData,0,0);
-  photos[cropIndex].dataUrl = outCanvas.toDataURL('image/jpeg',0.92);
-  photos[cropIndex].corrected = true;
-  renderThumbs();
+  cells[cropIdx].dataUrl = outCanvas.toDataURL('image/jpeg',0.92);
+  cells[cropIdx].corrected = true;
+  renderMap();
   cropModal.classList.remove('open');
 };
 function getHomography8(src, dst){
@@ -376,394 +405,199 @@ function getHomography8(src, dst){
     let maxRow=i;
     for(let k=i+1;k<n;k++) if(Math.abs(A[k][i])>Math.abs(A[maxRow][i])) maxRow=k;
     [A[i],A[maxRow]]=[A[maxRow],A[i]];
-    for(let k=i+1;k<n;k++){ const f = A[k][i]/A[i][i]; for(let j=i;j<=n;j++) A[k][j]-=f*A[i][j]; }
+    for(let k=i+1;k<n;k++){ const f=A[k][i]/A[i][i]; for(let j=i;j<=n;j++) A[k][j]-=f*A[i][j]; }
   }
   const x=new Array(n).fill(0);
   for(let i=n-1;i>=0;i--){ let s=A[i][n]; for(let j=i+1;j<n;j++) s-=A[i][j]*x[j]; x[i]=s/A[i][i]; }
   return x;
 }
 
-// ---------- utilidades de homografía general 3x3 (para el stitching automático) ----------
-function multiplyH(A,B){
-  const r=new Array(9).fill(0);
-  for(let i=0;i<3;i++)for(let j=0;j<3;j++){ let s=0; for(let k=0;k<3;k++) s+=A[i*3+k]*B[k*3+j]; r[i*3+j]=s; }
-  return r;
-}
-function invertH(H){
-  const [a,b,c,d,e,f,g,h,i]=H;
-  const A=e*i-f*h, B=-(d*i-f*g), C=d*h-e*g;
-  const D=-(b*i-c*h), E=a*i-c*g, F=-(a*h-b*g);
-  const G=b*f-c*e, Hh=-(a*f-c*d), I=a*e-b*d;
-  const det = a*A+b*B+c*C;
-  return [A/det,D/det,G/det, B/det,E/det,Hh/det, C/det,F/det,I/det];
-}
-function applyH(H,x,y){
-  const denom = H[6]*x+H[7]*y+H[8];
-  return [ (H[0]*x+H[1]*y+H[2])/denom, (H[3]*x+H[4]*y+H[5])/denom ];
-}
+// ---------- ensamblado determinístico (grid conocido) ----------
+let assembledDataUrl=null;
+let cellPlacements=[]; // {row,col,x,y,w,h,canvas} para el afinado
+const WORK_MAXDIM = 1400;
 
-// Rechaza homografías absurdas (el efecto "avión de papel"): perspectiva extrema,
-// escalas irreales, o área resultante muy distinta a la original.
-function isHomographyPlausible(H, w, h){
-  if(H.some(v => !isFinite(v))) return false;
-  // términos de perspectiva demasiado fuertes en relación al tamaño de la imagen
-  if(Math.abs(H[6])*w > 0.85 || Math.abs(H[7])*h > 0.85) return false;
-  // escala del bloque lineal (evita que la imagen se infle o encoja de forma irreal)
-  const det2x2 = H[0]*H[4]-H[1]*H[3];
-  const scale = Math.sqrt(Math.abs(det2x2))/Math.abs(H[8]||1);
-  if(scale < 0.25 || scale > 4) return false;
-  // el área proyectada no debe ser muy distinta al área original
-  const corners = [[0,0],[w,0],[w,h],[0,h]].map(([x,y])=>applyH(H,x,y));
-  let area=0;
-  for(let i=0;i<4;i++){
-    const [x1,y1]=corners[i], [x2,y2]=corners[(i+1)%4];
-    area += x1*y2 - x2*y1;
-  }
-  area = Math.abs(area)/2;
-  const origArea = w*h;
-  if(area < origArea*0.2 || area > origArea*5) return false;
-  // el cuadrilátero proyectado debe seguir siendo convexo y no "cruzarse" sobre sí mismo
-  for(let i=0;i<4;i++){
-    const [ax,ay]=corners[i], [bx,by]=corners[(i+1)%4], [cx,cy]=corners[(i+2)%4];
-    const cross = (bx-ax)*(cy-ay)-(by-ay)*(cx-ax);
-    if(i===0) var sign = Math.sign(cross);
-    else if(Math.sign(cross)!==sign && Math.sign(cross)!==0) return false;
-  }
-  return true;
-}
+function setStatus(text, kind){ const el=$('status'); el.textContent=text; el.className=kind||''; }
 
-// ---------- OpenCV.js loader ----------
-let cvReadyPromise = null;
+$('btnAssemble').onclick = async () => {
+  if(cells.some(c=>!c.dataUrl)){ if(!confirm('Faltan secciones por capturar. ¿Generar igual (quedarán espacios en blanco)?')) return; }
+  const overlapPct = Math.min(40, Math.max(0, parseFloat($('overlap').value)||0));
+
+  const imgs = await Promise.all(cells.map(c => c.dataUrl ? loadImage(c.dataUrl) : Promise.resolve(null)));
+  const validImgs = imgs.filter(Boolean);
+  if(validImgs.length===0){ alert('No hay ninguna sección capturada.'); return; }
+
+  // tamaño de celda de trabajo: el mayor ancho/alto entre las fotos, ya limitado a WORK_MAXDIM
+  const scaledDims = validImgs.map(i=>{
+    const s = Math.min(1, WORK_MAXDIM/Math.max(i.width,i.height));
+    return { w:i.width*s, h:i.height*s };
+  });
+  const cellW = Math.max(...scaledDims.map(d=>d.w));
+  const cellH = Math.max(...scaledDims.map(d=>d.h));
+  const trimX = Math.round(cellW*overlapPct/100);
+  const trimY = Math.round(cellH*overlapPct/100);
+  const effW = cellW-trimX, effH = cellH-trimY;
+  const totalW = gridCols*effW+trimX, totalH = gridRows*effH+trimY;
+
+  const canvas = $('assembledCanvas');
+  canvas.width=totalW; canvas.height=totalH; canvas.style.display='block';
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle='#fff'; ctx.fillRect(0,0,totalW,totalH);
+
+  cellPlacements = [];
+  imgs.forEach((img, idx) => {
+    if(!img) return;
+    const row = Math.floor(idx/gridCols), col = idx%gridCols;
+    // encajar la foto dentro de la celda manteniendo su proporción, centrada
+    const scaleToCell = Math.min(cellW/img.width, cellH/img.height);
+    const drawW = img.width*scaleToCell, drawH = img.height*scaleToCell;
+    const dx = col*effW + (cellW-drawW)/2;
+    const dy = row*effH + (cellH-drawH)/2;
+    ctx.drawImage(img, dx, dy, drawW, drawH);
+
+    const wc = document.createElement('canvas');
+    wc.width=Math.round(drawW); wc.height=Math.round(drawH);
+    wc.getContext('2d').drawImage(img,0,0,wc.width,wc.height);
+    cellPlacements.push({row,col,x:dx,y:dy,w:drawW,h:drawH,canvas:wc});
+  });
+
+  assembledDataUrl = canvas.toDataURL('image/jpeg',0.95);
+  $('btnExport').disabled=false;
+  $('btnRefine').disabled = cellPlacements.length<2;
+  $('exportHint').textContent = `Plano generado: ${totalW} x ${totalH} px.`;
+  setStatus('');
+};
+
+// ---------- afinado opcional (solo desliza, no deforma) ----------
+let cvReadyPromise=null;
 function ensureOpenCV(){
   if(cvReadyPromise) return cvReadyPromise;
-  cvReadyPromise = new Promise((resolve, reject)=>{
+  cvReadyPromise = new Promise((resolve,reject)=>{
     if(window.cv && window.cv.Mat){ resolve(); return; }
-    const script = document.createElement('script');
-    script.src = 'https://docs.opencv.org/4.x/opencv.js';
-    script.async = true;
-    script.onload = () => { cv['onRuntimeInitialized'] = () => resolve(); };
-    script.onerror = () => reject(new Error('No se pudo descargar OpenCV.js (revisa tu conexión a internet).'));
-    document.head.appendChild(script);
+    const s = document.createElement('script');
+    s.src='https://docs.opencv.org/4.x/opencv.js'; s.async=true;
+    s.onload = () => { cv['onRuntimeInitialized']=()=>resolve(); };
+    s.onerror = () => reject(new Error('No se pudo descargar OpenCV.js (revisa tu conexión).'));
+    document.head.appendChild(s);
   });
   return cvReadyPromise;
 }
-
 function detectFeatures(canvas){
   const src = cv.imread(canvas);
   const gray = new cv.Mat();
   cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-  const orb = new cv.ORB(1500);
+  const orb = new cv.ORB(800);
   const keypoints = new cv.KeyPointVector();
   const descriptors = new cv.Mat();
   const mask = new cv.Mat();
   orb.detectAndCompute(gray, mask, keypoints, descriptors);
   src.delete(); gray.delete(); mask.delete(); orb.delete();
-  return { keypoints, descriptors, _w: canvas.width, _h: canvas.height };
+  return {keypoints, descriptors};
 }
-function deleteFeatures(f){ f.keypoints.delete(); f.descriptors.delete(); }
-
-// devuelve H (9 valores, mapea imgFeat->panoFeat) o null si no hay suficiente coincidencia
-function estimateHomography(imgFeat, panoFeat){
-  if(imgFeat.descriptors.rows < 8 || panoFeat.descriptors.rows < 8) return null;
-  const bf = new cv.BFMatcher(cv.NORM_HAMMING, false);
-  const knn = new cv.DMatchVectorVector();
-  bf.knnMatch(imgFeat.descriptors, panoFeat.descriptors, knn, 2);
-  const good = [];
-  for(let i=0;i<knn.size();i++){
-    const m = knn.get(i);
-    if(m.size()<2) continue;
-    const m0=m.get(0), m1=m.get(1);
-    if(m0.distance < 0.75*m1.distance) good.push(m0);
-  }
-  knn.delete(); bf.delete();
-  if(good.length < 20) return null;
-
-  const srcArr=[], dstArr=[];
-  good.forEach(m=>{
-    const p1 = imgFeat.keypoints.get(m.queryIdx).pt;
-    const p2 = panoFeat.keypoints.get(m.trainIdx).pt;
-    srcArr.push(p1.x, p1.y); dstArr.push(p2.x, p2.y);
-  });
-  const srcMat = cv.matFromArray(good.length,1,cv.CV_32FC2, srcArr);
-  const dstMat = cv.matFromArray(good.length,1,cv.CV_32FC2, dstArr);
-  const maskMat = new cv.Mat();
-  const Hmat = cv.findHomography(srcMat, dstMat, cv.RANSAC, 3, maskMat);
-  let inliers=0;
-  for(let i=0;i<maskMat.rows;i++) if(maskMat.data[i]) inliers++;
-  srcMat.delete(); dstMat.delete(); maskMat.delete();
-  const inlierRatio = inliers/good.length;
-  if(Hmat.empty() || inliers < 20 || inlierRatio < 0.55){ Hmat.delete(); return null; }
-  const H = Array.from(Hmat.data64F);
-  Hmat.delete();
-  if(!isHomographyPlausible(H, imgFeat._w, imgFeat._h)){ return null; }
-  return H;
-}
-
-function mergeIntoPanorama(panoCanvas, imgCanvas, H){
-  const corners = [[0,0],[imgCanvas.width,0],[imgCanvas.width,imgCanvas.height],[0,imgCanvas.height]];
-  const mapped = corners.map(([x,y])=>applyH(H,x,y));
-  let minX=0,minY=0,maxX=panoCanvas.width,maxY=panoCanvas.height;
-  mapped.forEach(([x,y])=>{ minX=Math.min(minX,x); minY=Math.min(minY,y); maxX=Math.max(maxX,x); maxY=Math.max(maxY,y); });
-  const tx = Math.max(0,-minX), ty = Math.max(0,-minY);
-  const newW = Math.ceil(maxX - Math.min(0,minX));
-  const newH = Math.ceil(maxY - Math.min(0,minY));
-  if(newW > 6000 || newH > 6000 || newW<=0 || newH<=0) return null; // resultado poco plausible, se descarta
-
-  const newCanvas = document.createElement('canvas');
-  newCanvas.width=newW; newCanvas.height=newH;
-  const nctx = newCanvas.getContext('2d');
-  nctx.drawImage(panoCanvas, tx, ty);
-
-  const T = [1,0,tx, 0,1,ty, 0,0,1];
-  const Hnew = multiplyH(T,H);
-  const Hinv = invertH(Hnew);
-
-  const destCorners = corners.map(([x,y])=>applyH(Hnew,x,y));
-  let dminX=Infinity,dminY=Infinity,dmaxX=-Infinity,dmaxY=-Infinity;
-  destCorners.forEach(([x,y])=>{ dminX=Math.min(dminX,x); dminY=Math.min(dminY,y); dmaxX=Math.max(dmaxX,x); dmaxY=Math.max(dmaxY,y); });
-  dminX=Math.max(0,Math.floor(dminX)); dminY=Math.max(0,Math.floor(dminY));
-  dmaxX=Math.min(newW,Math.ceil(dmaxX)); dmaxY=Math.min(newH,Math.ceil(dmaxY));
-
-  const destImgData = nctx.getImageData(0,0,newW,newH);
-  const dd = destImgData.data;
-  const srcCtx = imgCanvas.getContext('2d');
-  const srcData = srcCtx.getImageData(0,0,imgCanvas.width,imgCanvas.height).data;
-  const sw=imgCanvas.width, sh=imgCanvas.height;
-
-  for(let Y=dminY;Y<dmaxY;Y++){
-    for(let X=dminX;X<dmaxX;X++){
-      const di=(Y*newW+X)*4;
-      if(dd[di+3] !== 0) continue;
-      const [sx,sy] = applyH(Hinv,X,Y);
-      if(sx>=0&&sy>=0&&sx<sw-1&&sy<sh-1){
-        const x0=Math.floor(sx), y0=Math.floor(sy), fx=sx-x0, fy=sy-y0;
-        for(let c=0;c<4;c++){
-          const p00=srcData[(y0*sw+x0)*4+c], p10=srcData[(y0*sw+x0+1)*4+c];
-          const p01=srcData[((y0+1)*sw+x0)*4+c], p11=srcData[((y0+1)*sw+x0+1)*4+c];
-          dd[di+c]=p00*(1-fx)*(1-fy)+p10*fx*(1-fy)+p01*(1-fx)*fy+p11*fx*fy;
-        }
+// estima solo un desplazamiento (dx,dy) entre dos franjas de solape; null si no hay confianza
+function estimateShift(stripA, stripB, maxShift){
+  const fa = detectFeatures(stripA), fb = detectFeatures(stripB);
+  let result = null;
+  if(fa.descriptors.rows>=8 && fb.descriptors.rows>=8){
+    const bf = new cv.BFMatcher(cv.NORM_HAMMING,false);
+    const knn = new cv.DMatchVectorVector();
+    bf.knnMatch(fa.descriptors, fb.descriptors, knn, 2);
+    const shifts=[];
+    for(let i=0;i<knn.size();i++){
+      const m = knn.get(i);
+      if(m.size()<2) continue;
+      const m0=m.get(0), m1=m.get(1);
+      if(m0.distance < 0.75*m1.distance){
+        const pa = fa.keypoints.get(m0.queryIdx).pt, pb = fb.keypoints.get(m0.trainIdx).pt;
+        shifts.push([pb.x-pa.x, pb.y-pa.y]);
       }
     }
+    knn.delete(); bf.delete();
+    if(shifts.length>=8){
+      shifts.sort((a,b)=>a[0]-b[0]);
+      const dx = shifts[Math.floor(shifts.length/2)][0];
+      shifts.sort((a,b)=>a[1]-b[1]);
+      const dy = shifts[Math.floor(shifts.length/2)][1];
+      if(Math.abs(dx)<=maxShift && Math.abs(dy)<=maxShift) result=[dx,dy];
+    }
   }
-  nctx.putImageData(destImgData,0,0);
-  return newCanvas;
+  fa.keypoints.delete(); fa.descriptors.delete(); fb.keypoints.delete(); fb.descriptors.delete();
+  return result;
 }
-
-function setStatus(text, kind){
-  const el = $('status');
-  el.textContent = text;
-  el.className = kind || '';
-}
-
-$('btnStitch').onclick = async () => {
-  const pending = photos.filter(p=>!p.used);
-  if(pending.length === 0){ alert('Agrega al menos 1 foto.'); return; }
-
-  // Si solo hay 1 foto (por ejemplo una panorámica ya armada por la cámara nativa del celular),
-  // se usa directamente, sin pasar por el motor de unión.
-  if(pending.length === 1){
-    pending[0].used = true;
-    renderThumbs();
-    assembledDataUrl = pending[0].dataUrl;
-    const img = await loadImage(assembledDataUrl);
-    const resultCanvas = $('resultCanvas');
-    resultCanvas.width = img.width; resultCanvas.height = img.height;
-    resultCanvas.getContext('2d').drawImage(img,0,0);
-    resultCanvas.style.display='block';
-    $('btnExport').disabled = false;
-    $('exportHint').textContent = 'Listo para descargar.';
-    setStatus('Una sola foto: se usa directamente como plano final (ideal si ya es una panorámica).');
-    return;
-  }
-
-  $('btnStitch').disabled = true;
-  $('progressBar').style.display='block';
+$('btnRefine').onclick = async () => {
+  $('btnRefine').disabled=true;
+  $('progressBar').style.display='block'; $('progressBar').value=0;
   try{
-    setStatus('Cargando motor de visión (OpenCV.js)... puede tardar la primera vez.');
+    setStatus('Cargando motor de visión (OpenCV.js)...');
     await ensureOpenCV();
+    const stripW = Math.round(Math.max(...cellPlacements.map(p=>p.w))*0.18);
+    const maxShift = stripW*2;
+    const adjust = {}; // idx -> {dx,dy} acumulado
 
-    setStatus('Preparando fotos...');
-    const items = [];
-    for(const p of pending){
-      const img = await loadImage(p.dataUrl);
-      items.push({ photo:p, canvas: toWorkingCanvas(img, WORK_MAXDIM) });
-    }
+    const byPos = {};
+    cellPlacements.forEach(p=> byPos[p.row+'_'+p.col]=p);
 
-    let panoCanvas = document.createElement('canvas');
-    panoCanvas.width = items[0].canvas.width; panoCanvas.height = items[0].canvas.height;
-    panoCanvas.getContext('2d').drawImage(items[0].canvas,0,0);
-    items[0].photo.used = true;
+    let pairs = [];
+    cellPlacements.forEach(p=>{
+      const right = byPos[p.row+'_'+(p.col+1)];
+      if(right) pairs.push(['h', p, right]);
+      const below = byPos[(p.row+1)+'_'+p.col];
+      if(below) pairs.push(['v', p, below]);
+    });
 
-    let queue = items.slice(1);
-    const total = queue.length;
-    let stuckRounds = 0;
-
-    while(queue.length>0 && stuckRounds<2){
-      let mergedAny = false;
-      setStatus(`Analizando plano actual y comparando ${queue.length} foto(s) restantes...`);
-      const panoFeat = detectFeatures(panoCanvas);
-      for(let i=0;i<queue.length;i++){
-        $('progressBar').value = (total-queue.length)/total;
-        const it = queue[i];
-        const imgFeat = detectFeatures(it.canvas);
-        const H = estimateHomography(imgFeat, panoFeat);
-        deleteFeatures(imgFeat);
-        if(H){
-          const merged = mergeIntoPanorama(panoCanvas, it.canvas, H);
-          if(merged){
-            panoCanvas = merged;
-            it.photo.used = true;
-            queue.splice(i,1); i--;
-            mergedAny = true;
-          }
-        }
+    let done=0;
+    for(const [dir, a, b] of pairs){
+      setStatus(`Afinando encaje ${done+1} de ${pairs.length}...`);
+      $('progressBar').value = done/pairs.length;
+      let stripA, stripB;
+      if(dir==='h'){
+        stripA = cropCanvasRegion(a.canvas, Math.max(0,a.canvas.width-stripW), 0, stripW, a.canvas.height);
+        stripB = cropCanvasRegion(b.canvas, 0, 0, stripW, b.canvas.height);
+      } else {
+        stripA = cropCanvasRegion(a.canvas, 0, Math.max(0,a.canvas.height-stripW), a.canvas.width, stripW);
+        stripB = cropCanvasRegion(b.canvas, 0, 0, b.canvas.width, stripW);
       }
-      deleteFeatures(panoFeat);
-      stuckRounds = mergedAny ? 0 : stuckRounds+1;
+      const shift = estimateShift(stripA, stripB, maxShift);
+      if(shift){
+        const key = b.row+'_'+b.col;
+        const prev = adjust[key] || [0,0];
+        adjust[key] = [prev[0]-shift[0]*0.5, prev[1]-shift[1]*0.5]; // corrección suave, no total
+      }
+      done++;
     }
     $('progressBar').value=1;
 
-    orphanQueue = queue.map(it => ({ photoId: it.photo.id, canvas: it.canvas }));
-    renderThumbs();
-    orphanQueue.forEach(o=>{
-      photos.forEach(p=>{ if(p.id===o.photoId){ /* marcamos visualmente */ } });
+    // redibujar con los ajustes (acotados a una fracción del solape para nunca "romper" el layout)
+    const canvas = $('assembledCanvas');
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle='#fff'; ctx.fillRect(0,0,canvas.width,canvas.height);
+    cellPlacements.forEach(p=>{
+      const adj = adjust[p.row+'_'+p.col] || [0,0];
+      const cap = stripW*0.6;
+      const ax = Math.max(-cap, Math.min(cap, adj[0]));
+      const ay = Math.max(-cap, Math.min(cap, adj[1]));
+      ctx.drawImage(p.canvas, p.x+ax, p.y+ay, p.w, p.h);
     });
-
-    const resultCanvas = $('resultCanvas');
-    resultCanvas.width = panoCanvas.width; resultCanvas.height = panoCanvas.height;
-    resultCanvas.getContext('2d').drawImage(panoCanvas,0,0);
-    resultCanvas.style.display='block';
-    assembledDataUrl = panoCanvas.toDataURL('image/jpeg',0.92);
-    $('btnExport').disabled = false;
-    $('exportHint').textContent = 'Listo para descargar.';
-
-    if(orphanQueue.length>0){
-      setStatus(`Unidas ${total-orphanQueue.length} de ${total} fotos automáticamente. ${orphanQueue.length} no encontraron suficientes coincidencias — acomódalas a mano abajo (paso 4b).`, 'warn');
-      openManualSection(panoCanvas);
-    } else {
-      setStatus(`Las ${total+1} fotos se unieron automáticamente.`);
-      $('manualSection').style.display='none';
-    }
+    assembledDataUrl = canvas.toDataURL('image/jpeg',0.95);
+    setStatus(`Afinado aplicado en ${Object.keys(adjust).length} de ${pairs.length} bordes con coincidencia confiable.`);
   }catch(err){
     console.error(err);
-    setStatus('Error: '+err.message+'. Revisa tu conexión a internet (se necesita para descargar OpenCV.js la primera vez) y vuelve a intentar.', 'err');
+    setStatus('No se pudo afinar automáticamente: '+err.message+'. El plano generado en el paso 3 sigue disponible tal cual.', 'err');
   }finally{
-    $('btnStitch').disabled = false;
+    $('btnRefine').disabled=false;
     $('progressBar').style.display='none';
   }
 };
-
-// ---------- paso 4b: acomodo manual de huérfanas sobre el panorama fijo ----------
-let items = []; // draggable items {id, img, xMM, yMM, wMM, hMM, z, locked}
-let zTop = 1;
-let displayScale = 1;
-const workspace = $('workspace');
-
-function openManualSection(panoCanvas){
-  $('manualSection').style.display='block';
-  items = [];
-  workspace.innerHTML = '';
-  const {w:pageW} = getPageMM();
-  const baseWMM = pageW;
-  const baseHMM = baseWMM * (panoCanvas.height/panoCanvas.width);
-  const bg = new Image(); bg.src = panoCanvas.toDataURL('image/png');
-  items.push({id:'bg', img:bg, xMM:0, yMM:0, wMM:baseWMM, hMM:baseHMM, z:0, locked:true});
-
-  let idx=0;
-  orphanQueue.forEach(o=>{
-    const img = new Image(); img.src = o.canvas.toDataURL('image/jpeg',0.9);
-    const wMM = baseWMM*0.35;
-    const hMM = wMM*(o.canvas.height/o.canvas.width);
-    items.push({id:'ph-'+o.photoId, img, xMM: baseWMM*0.05 + idx*10, yMM: baseHMM*0.05+idx*10, wMM, hMM, z:++zTop, locked:false});
-    idx++;
-  });
-  layoutWorkspace();
+function cropCanvasRegion(canvas, x, y, w, h){
+  const c = document.createElement('canvas');
+  c.width=Math.max(1,Math.round(w)); c.height=Math.max(1,Math.round(h));
+  c.getContext('2d').drawImage(canvas, x, y, w, h, 0, 0, c.width, c.height);
+  return c;
 }
-function layoutWorkspace(){
-  const {w} = getPageMM();
-  const maxW = Math.min(document.querySelector('#workspaceWrap').clientWidth || 760, 760);
-  const baseItem = items[0];
-  if(!baseItem) return;
-  displayScale = Math.max(0.1, Math.min(maxW/baseItem.wMM, 1.2));
-  workspace.style.width = (baseItem.wMM*displayScale)+'px';
-  workspace.style.height = (baseItem.hMM*displayScale)+'px';
-  items.forEach(renderItem);
-}
-window.addEventListener('resize', layoutWorkspace);
-$('opacitySlider').oninput = (e) => {
-  const v = e.target.value/100;
-  workspace.querySelectorAll('.pitem:not(.locked) img').forEach(img=> img.style.opacity = v);
-};
-function renderItem(it){
-  let el = document.getElementById('item-'+it.id);
-  if(!el){
-    el = document.createElement('div');
-    el.className='pitem'+(it.locked?' locked':'');
-    el.id = 'item-'+it.id;
-    el.innerHTML = `<img src="${it.img.src}">`+(it.locked?'':'<button class="del2">×</button><div class="handle"></div>');
-    workspace.appendChild(el);
-    if(!it.locked) attachItemEvents(el, it);
-  }
-  el.style.left = (it.xMM*displayScale)+'px';
-  el.style.top = (it.yMM*displayScale)+'px';
-  el.style.width = (it.wMM*displayScale)+'px';
-  el.style.height = (it.hMM*displayScale)+'px';
-  el.style.zIndex = it.z;
-}
-function attachItemEvents(el, it){
-  el.querySelector('.del2').onclick = (e) => { e.stopPropagation(); items = items.filter(x=>x.id!==it.id); el.remove(); };
-  let mode=null, startX=0, startY=0, orig={};
-  const handle = el.querySelector('.handle');
-  function onDown(e, isHandle){
-    e.preventDefault(); e.stopPropagation();
-    workspace.querySelectorAll('.pitem').forEach(p=>p.classList.remove('sel'));
-    el.classList.add('sel');
-    it.z = ++zTop; el.style.zIndex = it.z;
-    const pt = e.touches? e.touches[0] : e;
-    startX = pt.clientX; startY = pt.clientY;
-    orig = {x:it.xMM, y:it.yMM, w:it.wMM, h:it.hMM};
-    mode = isHandle ? 'resize' : 'move';
-    window.addEventListener('mousemove', onMove); window.addEventListener('touchmove', onMove, {passive:false});
-    window.addEventListener('mouseup', onUp); window.addEventListener('touchend', onUp);
-  }
-  function onMove(e){
-    if(!mode) return; e.preventDefault();
-    const pt = e.touches? e.touches[0] : e;
-    const dxMM = (pt.clientX-startX)/displayScale, dyMM = (pt.clientY-startY)/displayScale;
-    if(mode==='move'){ it.xMM = orig.x+dxMM; it.yMM = orig.y+dyMM; }
-    else { const ratio = orig.h/orig.w; it.wMM = Math.max(10, orig.w+dxMM); it.hMM = it.wMM*ratio; }
-    renderItem(it);
-  }
-  function onUp(){ mode=null; window.removeEventListener('mousemove', onMove); window.removeEventListener('touchmove', onMove); window.removeEventListener('mouseup', onUp); window.removeEventListener('touchend', onUp); }
-  el.addEventListener('mousedown', (e)=>onDown(e,false));
-  el.addEventListener('touchstart', (e)=>onDown(e,false), {passive:false});
-  handle.addEventListener('mousedown', (e)=>onDown(e,true));
-  handle.addEventListener('touchstart', (e)=>onDown(e,true), {passive:false});
-}
-
-$('btnFlattenManual').onclick = () => {
-  const base = items[0];
-  const pxPerMM = 3.5;
-  const W = Math.round(base.wMM*pxPerMM), H = Math.round(base.hMM*pxPerMM);
-  const canvas = document.createElement('canvas');
-  canvas.width=W; canvas.height=H;
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle='#fff'; ctx.fillRect(0,0,W,H);
-  [...items].sort((a,b)=>a.z-b.z).forEach(it=>{
-    ctx.drawImage(it.img, it.xMM*pxPerMM, it.yMM*pxPerMM, it.wMM*pxPerMM, it.hMM*pxPerMM);
-  });
-  assembledDataUrl = canvas.toDataURL('image/jpeg',0.92);
-  const resultCanvas = $('resultCanvas');
-  resultCanvas.width=W; resultCanvas.height=H;
-  resultCanvas.getContext('2d').drawImage(canvas,0,0);
-  resultCanvas.style.display='block';
-  setStatus('Plano final actualizado con las fotos acomodadas a mano.');
-  $('btnExport').disabled=false;
-};
 
 // ---------- exportar PDF ----------
 $('btnExport').onclick = () => {
-  if(!assembledDataUrl){ alert('Une las fotos primero (paso 4).'); return; }
+  if(!assembledDataUrl){ alert('Genera el plano primero (paso 3).'); return; }
   const {w:wmm,h:hmm} = getPageMM();
   const { jsPDF } = window.jspdf;
   const pdf = new jsPDF({ orientation: $('orientation').value==='l'?'landscape':'portrait', unit:'mm', format:[wmm,hmm] });
@@ -771,8 +605,8 @@ $('btnExport').onclick = () => {
   img.onload = () => {
     const pageRatio = wmm/hmm, imgRatio = img.width/img.height;
     let drawW, drawH;
-    if(imgRatio > pageRatio){ drawW = wmm; drawH = wmm/imgRatio; } else { drawH = hmm; drawW = hmm*imgRatio; }
-    const offX = (wmm-drawW)/2, offY = (hmm-drawH)/2;
+    if(imgRatio > pageRatio){ drawW=wmm; drawH=wmm/imgRatio; } else { drawH=hmm; drawW=hmm*imgRatio; }
+    const offX=(wmm-drawW)/2, offY=(hmm-drawH)/2;
     pdf.addImage(assembledDataUrl,'JPEG', offX, offY, drawW, drawH);
     pdf.save('plano-escaneado.pdf');
   };
